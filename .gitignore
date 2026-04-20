@@ -1,0 +1,11 @@
+/news
+/bin/
+*.test
+*.out
+.env
+.env.local
+.DS_Store
+coverage.out
+coverage_*.out
+.vscode/
+.claude/

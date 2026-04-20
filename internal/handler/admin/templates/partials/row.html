@@ -1,0 +1,12 @@
+{{define "row"}}<tr id="row-{{.Article.ArticleID}}">
+  <td><small>{{.Article.IngestedAt.Format "2006-01-02 15:04"}}</small></td>
+  <td>{{.Article.Source}}</td>
+  <td>{{if .DisplayTitle}}<a href="/admin/articles/{{.Article.ArticleID}}">{{.DisplayTitle}}</a>{{else}}<a href="/admin/articles/{{.Article.ArticleID}}"><em>[ja 未作成]</em></a>{{end}}</td>
+  <td><small>{{.LangsLabel}}</small></td>
+  <td><code>{{.Article.Status}}</code></td>
+  <td>
+    {{if statusNE .Article.Status "published"}}<button hx-post="/admin/articles/{{.Article.ArticleID}}/publish" hx-target="#row-{{.Article.ArticleID}}" hx-swap="outerHTML">承認</button>{{end}}
+    {{if statusNE .Article.Status "rejected"}}<button hx-post="/admin/articles/{{.Article.ArticleID}}/reject" hx-target="#row-{{.Article.ArticleID}}" hx-swap="outerHTML" class="secondary">却下</button>{{end}}
+  </td>
+</tr>
+{{end}}

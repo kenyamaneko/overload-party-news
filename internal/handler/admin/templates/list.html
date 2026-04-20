@@ -1,0 +1,31 @@
+{{define "content"}}
+<nav>
+  <ul>
+    <li><strong>絞り込み:</strong></li>
+    <li><a href="/admin/articles"{{if eq .ActiveStatus ""}} aria-current="page"{{end}}>all</a></li>
+    <li><a href="/admin/articles?status=pending"{{if eq .ActiveStatus "pending"}} aria-current="page"{{end}}>pending</a></li>
+    <li><a href="/admin/articles?status=published"{{if eq .ActiveStatus "published"}} aria-current="page"{{end}}>published</a></li>
+    <li><a href="/admin/articles?status=rejected"{{if eq .ActiveStatus "rejected"}} aria-current="page"{{end}}>rejected</a></li>
+  </ul>
+</nav>
+
+{{if not .Items}}
+  <p><em>該当する記事がありません。</em></p>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th>取り込み</th>
+      <th>source</th>
+      <th>タイトル (ja)</th>
+      <th>翻訳</th>
+      <th>status</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Items}}{{template "row" .}}{{end}}
+  </tbody>
+</table>
+{{end}}
+{{end}}
