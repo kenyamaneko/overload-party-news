@@ -59,14 +59,20 @@ news 側の `iapMiddleware` はヘッダ存在確認と context への email 注
 
 `news-article-collected` の購読は at-least-once 配送。重複配送を吸収するため以下の 3 段構成:
 
-1. **DB レベル (親)**: `news_articles` に `INSERT ... ON CONFLICT (article_id) DO NOTHING`
+1. **DB レベル (親)**: `news_articles` に `INSERT ... ON CONFLICT DO NOTHING`
    - `article_id` は newsfeed が採番した ULID
    - 既存行があれば INSERT は no-op。**校閲済みの既存行を上書きしない**ことが重要
 2. **DB レベル (翻訳)**: `news_article_translations` に `INSERT ... ON CONFLICT (article_id, lang) DO NOTHING`
    - 既存翻訳は維持し、newsfeed の再送で校閲済みテキストを壊さない
 3. **補助キー**: `source_url` の UNIQUE 制約（`article_id` 再採番事故への二次防御）
 
-親記事 + 翻訳 N 行は **同一トランザクション**で INSERT する。親記事が新規でコミットされた瞬間に、その時点で受け取った翻訳群も確実に揃っている状態を作る。途中でどれかが失敗すれば全部巻き戻り、Pub/Sub リトライで再実行される。
+`InsertArticle` と `InsertTranslation` は **独立した冪等操作**として実装し、トランザクションでまとめない。subscriber は両方を順に呼び、どちらかが失敗した時点で NACK → Pub/Sub が再配送する。再配送時は両方の DO NOTHING により、記事・翻訳のいずれかだけが先に入っていても残りを安全に補完できる。
+
+### なぜ tx を張らないか
+
+1. **翻訳テーブルはインジェスト以外にも書かれる**: 管理 UI からの `UpsertTranslation`（ja 編集 / en 追加）でも独立に更新される。ingest 経路だけが記事と翻訳をまとめて書く必要性は薄い
+2. **中間状態が運用で扱える**: 「記事は入ったが翻訳はまだ」は管理 UI の `[ja 未作成]` プレースホルダで可視化される（§FEATURE_SPEC 7）。逆に tx で巻き戻すと、障害が operator から見えなくなる
+3. **FEATURE_SPEC §3.1 の単純化**: MVP では ja 翻訳 1 件のみ。複数翻訳の原子挿入は仕様に無く、tx の利益が薄い
 
 ### 既存行の UPDATE は行わない
 

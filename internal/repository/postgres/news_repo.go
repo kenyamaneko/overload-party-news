@@ -9,11 +9,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
+
+// PostgreSQL SQLSTATE. `foreign_key_violation` は親行が無いまま子を INSERT した場合に発生する。
+const pgCodeForeignKeyViolation = "23503"
 
 // compile-time assertion: NewsRepository が port の全インタフェースを満たす。
 var (
@@ -173,16 +177,9 @@ func (r *NewsRepository) GetByID(ctx context.Context, articleID string) (*apinew
 	}, nil
 }
 
-// Insert は新規記事 + 複数翻訳を単一 tx で挿入する。
-// 親記事が既存なら inserted=false で返す (翻訳も ON CONFLICT DO NOTHING で既存を尊重)。
-func (r *NewsRepository) Insert(ctx context.Context, article apinews.Article, translations []apinews.Translation) (bool, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return false, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	tag, err := tx.Exec(ctx,
+// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
+func (r *NewsRepository) InsertArticle(ctx context.Context, article apinews.Article) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
 		`INSERT INTO news.news_articles
 			(article_id, source, source_url, tags, status, source_published_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)
@@ -193,43 +190,21 @@ func (r *NewsRepository) Insert(ctx context.Context, article apinews.Article, tr
 	if err != nil {
 		return false, fmt.Errorf("insert article: %w", err)
 	}
-	inserted := tag.RowsAffected() == 1
-
-	// 親記事が挿入されなかった場合は翻訳も触らない。
-	// 衝突理由が article_id 重複なら既存翻訳を保持し、source_url 重複 (article_id は新規だが
-	// 記事行が無い) なら FK 違反を避ける。どちらも「校閲済みテキストを再送で壊さない」契約に沿う。
-	if inserted {
-		for _, tr := range translations {
-			if _, terr := tx.Exec(ctx,
-				`INSERT INTO news.news_article_translations
-					(article_id, lang, title, summary, body)
-				 VALUES ($1, $2, $3, $4, $5)
-				 ON CONFLICT (article_id, lang) DO NOTHING`,
-				article.ArticleID, tr.Lang, tr.Title, tr.Summary, tr.Body,
-			); terr != nil {
-				return false, fmt.Errorf("insert translation (lang=%s): %w", tr.Lang, terr)
-			}
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return false, fmt.Errorf("commit tx: %w", err)
-	}
-	return inserted, nil
+	return tag.RowsAffected() == 1, nil
 }
 
-// ArticleExists は記事の存在を確認する。非存在なら ErrNotFound。
-func (r *NewsRepository) ArticleExists(ctx context.Context, articleID string) error {
-	var exists bool
-	err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM news.news_articles WHERE article_id = $1)`,
-		articleID,
-	).Scan(&exists)
+// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
+// 親記事が存在しない状態で呼ぶと FK 違反でエラーになる (呼び出し側で順序保証)。
+func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO news.news_article_translations
+			(article_id, lang, title, summary, body)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (article_id, lang) DO NOTHING`,
+		articleID, lang, title, summary, body,
+	)
 	if err != nil {
-		return fmt.Errorf("check article exists: %w", err)
-	}
-	if !exists {
-		return fmt.Errorf("article %s: %w", articleID, port.ErrNotFound)
+		return fmt.Errorf("insert translation (lang=%s): %w", lang, err)
 	}
 	return nil
 }
@@ -260,10 +235,6 @@ func (r *NewsRepository) Reject(ctx context.Context, articleID string, reviewer 
 // UpsertTranslation は翻訳行を追加 / 更新する。親記事が存在しない場合は FK 違反で ErrNotFound を返す。
 // news_articles には一切触れない (翻訳編集はレビュー判断と区別するため)。
 func (r *NewsRepository) UpsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
-	// 先に親記事の存在を確認する (FK 違反の SQL エラーより ErrNotFound のほうが呼び出し側で扱いやすい)。
-	if err := r.ArticleExists(ctx, articleID); err != nil {
-		return err
-	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO news.news_article_translations
 			(article_id, lang, title, summary, body)
@@ -275,6 +246,10 @@ func (r *NewsRepository) UpsertTranslation(ctx context.Context, articleID string
 		articleID, lang, title, summary, body,
 	)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgCodeForeignKeyViolation {
+			return fmt.Errorf("article %s: %w", articleID, port.ErrNotFound)
+		}
 		return fmt.Errorf("upsert translation: %w", err)
 	}
 	return nil

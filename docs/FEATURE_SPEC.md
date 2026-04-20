@@ -89,10 +89,12 @@ status は記事レベル（言語横断）であり、翻訳行ごとには持�
 
 ```
 Pub/Sub event (ja translation)
-  └─ INSERT articles (status=pending) + translations (lang=ja)
+  └─ InsertArticle (status=pending)  ─┐  独立した冪等操作
+     InsertTranslation (lang=ja)     ─┘  (tx なし、再配送で収束)
         │
         ▼ 管理 UI (§6 / §7)
         ├─ 翻訳編集 (ja / en) → 該当行のみ upsert、status 変更なし
+        ├─ en 翻訳の新規追加 (§6.3) → upsert、status 変更なし
         ├─ 承認 → status = published  ── 存在する翻訳の言語で公開 API に露出
         └─ 却下 → status = rejected   ── 恒久非公開
 ```
@@ -109,7 +111,9 @@ news サービスは未知の `status` 値を **非公開として扱う**。将
 
 ## 3. 記事インジェスト
 
-news は `news-article-collected` トピックを購読し、受信メッセージごとに `news_articles` 1 行 + `news_article_translations` N 行を同一トランザクションで INSERT する。
+news は `news-article-collected` トピックを購読し、受信メッセージごとに `news_articles` 1 行 + `news_article_translations` の **ja 翻訳 1 行** を独立した冪等操作として INSERT する（トランザクションは張らない）。
+
+`InsertArticle` と `InsertTranslation` は独立した冪等操作であり、片方が失敗した中間状態（記事だけ入って翻訳なし）は Pub/Sub の再配送で収束する。管理 UI は ja 翻訳が未作成の記事を `[ja 未作成]` で描画するため、中間状態は運用上も可観測。
 
 ### 3.1 購読イベントのペイロード
 
@@ -120,18 +124,20 @@ news は `news-article-collected` トピックを購読し、受信メッセー�
 | `source_url` | string | No | |
 | `tags` | string[] | No | |
 | `source_published_at` | timestamptz | Yes | 元記事（RSS 由来）の公開日時 |
-| `translations` | `[]EventTranslation` | No | 1 つ以上の翻訳エントリ（MVP では ja 1 件）|
+| `translations` | `[]EventTranslation` | No | **MVP では ja 翻訳 1 件ちょうど**（en 等を含むイベントは拒否） |
 
 `EventTranslation`:
 
 | フィールド | 型 | Nullable | 備考 |
 |---|---|---|---|
-| `lang` | string | No | `ja` / `en` など対応言語 |
+| `lang` | string | No | MVP では `ja` のみ許容（§2.3 / §6.3） |
 | `title` | string | No | |
 | `summary` | string | No | newsfeed の Vertex AI 要約結果 |
 | `body` | string | No | 記事本文 |
 
-**必須フィールドが欠けた / 対応外の lang を含む / translations が空**のイベントは `ErrInvalidEventPayload` で ACK（再送されても結果が変わらないため）。ログには warn で残す。
+**必須フィールドが欠けた / translations が ja 1 件ちょうどでない**イベントは `ErrInvalidEventPayload` で ACK（再送されても結果が変わらないため）。ログには warn で残す。
+
+en 翻訳は管理 UI 経由で手動追加する（§6.3）。これは「AI 生成の初稿を運用者が手直しする前提で、ingest 段階で ja / en の両方を作ると修正工数が倍になる」という運用要件に基づく。
 
 ### 3.2 冪等性
 
@@ -141,11 +147,11 @@ news は `news-article-collected` トピックを購読し、受信メッセー�
 2. **source_url**: UNIQUE（article_id 再採番事故に対する二次防御）
 3. **(article_id, lang)**: translations の PK
 
-INSERT は同一トランザクション内で:
-- `news_articles` に `ON CONFLICT (article_id) DO NOTHING`
+記事・翻訳ともに INSERT 時:
+- `news_articles` に `ON CONFLICT DO NOTHING`
 - `news_article_translations` に `ON CONFLICT (article_id, lang) DO NOTHING`
 
-親記事が既存の場合、翻訳 INSERT も結果として no-op（PK 衝突）。**校閲後の翻訳を newsfeed の再送で上書きしない** 契約を維持する。
+**校閲後の翻訳を newsfeed の再送で上書きしない** 契約を維持する（再送で ja が既に存在すれば DO NOTHING）。記事 INSERT と翻訳 INSERT はトランザクションでまとめない。subscriber は両方を順に呼び、どちらかが失敗したら NACK → Pub/Sub が再配送する。
 
 ### 3.3 インジェスト時の初期値
 

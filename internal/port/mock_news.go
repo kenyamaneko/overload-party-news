@@ -14,8 +14,8 @@ type MockNewsRepo struct {
 	GetPublishedByIDFn  func(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error)
 	ListByStatusFn      func(ctx context.Context, statusFilter *apinews.Status, limit int) ([]apinews.ArticleWithTranslations, error)
 	GetByIDFn           func(ctx context.Context, articleID string) (*apinews.ArticleWithTranslations, error)
-	InsertFn            func(ctx context.Context, article apinews.Article, translations []apinews.Translation) (bool, error)
-	ArticleExistsFn     func(ctx context.Context, articleID string) error
+	InsertArticleFn     func(ctx context.Context, article apinews.Article) (bool, error)
+	InsertTranslationFn func(ctx context.Context, articleID string, lang, title, summary, body string) error
 	PublishFn           func(ctx context.Context, articleID string, reviewer string, now time.Time) error
 	RejectFn            func(ctx context.Context, articleID string, reviewer string, now time.Time) error
 	UpsertTranslationFn func(ctx context.Context, articleID string, lang, title, summary, body string) error
@@ -56,18 +56,18 @@ func (m *MockNewsRepo) GetByID(ctx context.Context, articleID string) (*apinews.
 	return m.GetByIDFn(ctx, articleID)
 }
 
-func (m *MockNewsRepo) Insert(ctx context.Context, article apinews.Article, translations []apinews.Translation) (bool, error) {
-	if m.InsertFn == nil {
-		panic("MockNewsRepo.Insert called without Fn")
+func (m *MockNewsRepo) InsertArticle(ctx context.Context, article apinews.Article) (bool, error) {
+	if m.InsertArticleFn == nil {
+		panic("MockNewsRepo.InsertArticle called without Fn")
 	}
-	return m.InsertFn(ctx, article, translations)
+	return m.InsertArticleFn(ctx, article)
 }
 
-func (m *MockNewsRepo) ArticleExists(ctx context.Context, articleID string) error {
-	if m.ArticleExistsFn == nil {
-		panic("MockNewsRepo.ArticleExists called without Fn")
+func (m *MockNewsRepo) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
+	if m.InsertTranslationFn == nil {
+		panic("MockNewsRepo.InsertTranslation called without Fn")
 	}
-	return m.ArticleExistsFn(ctx, articleID)
+	return m.InsertTranslationFn(ctx, articleID, lang, title, summary, body)
 }
 
 func (m *MockNewsRepo) Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error {

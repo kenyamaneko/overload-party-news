@@ -34,17 +34,51 @@ func TestList_仕様_クエリバリデーション(t *testing.T) {
 		query      string
 		wantStatus int
 	}{
-		{name: "lang=ja 未 limit", query: "?lang=ja", wantStatus: http.StatusOK},
-		{name: "lang=en 未 limit", query: "?lang=en", wantStatus: http.StatusOK},
-		{name: "lang + limit 指定", query: "?lang=ja&limit=10", wantStatus: http.StatusOK},
-
-		{name: "lang 未指定は 400", query: "", wantStatus: http.StatusBadRequest},
-		{name: "lang 未指定 (limit のみ) も 400", query: "?limit=10", wantStatus: http.StatusBadRequest},
-		{name: "lang 対応外は 400", query: "?lang=fr", wantStatus: http.StatusBadRequest},
-
-		{name: "limit 下限未満は 400", query: "?lang=ja&limit=0", wantStatus: http.StatusBadRequest},
-		{name: "limit 上限超過は 400", query: "?lang=ja&limit=101", wantStatus: http.StatusBadRequest},
-		{name: "limit 非整数は 400", query: "?lang=ja&limit=abc", wantStatus: http.StatusBadRequest},
+		{
+			name:       "lang=ja 未 limit",
+			query:      "?lang=ja",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "lang=en 未 limit",
+			query:      "?lang=en",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "lang + limit 指定",
+			query:      "?lang=ja&limit=10",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "lang 未指定は 400",
+			query:      "",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "lang 未指定 (limit のみ) も 400",
+			query:      "?limit=10",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "lang 対応外は 400",
+			query:      "?lang=fr",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit 下限未満は 400",
+			query:      "?lang=ja&limit=0",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit 上限超過は 400",
+			query:      "?lang=ja&limit=101",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit 非整数は 400",
+			query:      "?lang=ja&limit=abc",
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range cases {
@@ -119,18 +153,43 @@ func TestList_仕様_レスポンス形(t *testing.T) {
 func TestGetDetail_仕様_HTTPマッピング(t *testing.T) {
 	otherErr := errors.New("db lost")
 
+	successDetail := &apinews.NewsDetail{ArticleID: "abc", PublishedAt: time.Now()}
+
 	cases := []struct {
 		name       string
 		query      string
+		repoReturn *apinews.NewsDetail
 		repoErr    error
 		wantStatus int
 	}{
-		{name: "成功", query: "?lang=ja", repoErr: nil, wantStatus: http.StatusOK},
-		{name: "not found は 404", query: "?lang=ja", repoErr: port.ErrNotFound, wantStatus: http.StatusNotFound},
-		{name: "その他エラーは 500", query: "?lang=ja", repoErr: otherErr, wantStatus: http.StatusInternalServerError},
-
-		{name: "lang 未指定は 400", query: "", repoErr: nil, wantStatus: http.StatusBadRequest},
-		{name: "lang 対応外は 400", query: "?lang=fr", repoErr: nil, wantStatus: http.StatusBadRequest},
+		{
+			name:       "成功",
+			query:      "?lang=ja",
+			repoReturn: successDetail,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "not found は 404",
+			query:      "?lang=ja",
+			repoErr:    port.ErrNotFound,
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "その他エラーは 500",
+			query:      "?lang=ja",
+			repoErr:    otherErr,
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "lang 未指定は 400",
+			query:      "",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "lang 対応外は 400",
+			query:      "?lang=fr",
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range cases {
@@ -138,10 +197,7 @@ func TestGetDetail_仕様_HTTPマッピング(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &port.MockNewsRepo{
 				GetPublishedByIDFn: func(_ context.Context, _ string, _ string) (*apinews.NewsDetail, error) {
-					if tc.repoErr != nil {
-						return nil, tc.repoErr
-					}
-					return &apinews.NewsDetail{ArticleID: "abc", PublishedAt: time.Now()}, nil
+					return tc.repoReturn, tc.repoErr
 				},
 			}
 			h := rest.NewNewsHandler(news.New(repo))
@@ -160,7 +216,7 @@ func TestGetDetail_仕様_本文とsource_urlを返す(t *testing.T) {
 	want := &apinews.NewsDetail{
 		ArticleID: "01", Source: "oci", Title: "T", Summary: "S",
 		Body: "本文", Tags: []string{"ai"},
-		SourceURL: "https://example.com/a",
+		SourceURL:   "https://example.com/a",
 		PublishedAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 	}
 	var gotLang string

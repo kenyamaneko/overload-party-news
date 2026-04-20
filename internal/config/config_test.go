@@ -37,22 +37,71 @@ func TestFromEnv_仕様_必須変数と値の妥当性(t *testing.T) {
 		mutate  func(m map[string]string)
 		wantErr bool
 	}{
-		{name: "正常", mutate: func(_ map[string]string) {}, wantErr: false},
-
-		{name: "ENV 欠け", mutate: func(m map[string]string) { delete(m, "ENV") }, wantErr: true},
-		{name: "ENV 未知値", mutate: func(m map[string]string) { m["ENV"] = "dev" }, wantErr: true},
-		{name: "ENV = staging", mutate: func(m map[string]string) { m["ENV"] = "staging" }, wantErr: false},
-		{name: "ENV = production", mutate: func(m map[string]string) { m["ENV"] = "production" }, wantErr: false},
-
-		{name: "INTERNAL_PORT 欠け", mutate: func(m map[string]string) { delete(m, "INTERNAL_PORT") }, wantErr: true},
-		{name: "INTERNAL_PORT 非整数", mutate: func(m map[string]string) { m["INTERNAL_PORT"] = "abc" }, wantErr: true},
-		{name: "ADMIN_PORT 欠け", mutate: func(m map[string]string) { delete(m, "ADMIN_PORT") }, wantErr: true},
-		{name: "ADMIN_PORT 非整数", mutate: func(m map[string]string) { m["ADMIN_PORT"] = "abc" }, wantErr: true},
-		{name: "internal / admin 同ポートは拒否", mutate: func(m map[string]string) { m["ADMIN_PORT"] = m["INTERNAL_PORT"] }, wantErr: true},
-
-		{name: "DATABASE_CONN 欠け", mutate: func(m map[string]string) { delete(m, "DATABASE_CONN") }, wantErr: true},
-		{name: "GOOGLE_CLOUD_PROJECT 欠け", mutate: func(m map[string]string) { delete(m, "GOOGLE_CLOUD_PROJECT") }, wantErr: true},
-		{name: "SUBSCRIPTION 欠け", mutate: func(m map[string]string) { delete(m, "NEWS_ARTICLE_COLLECTED_SUBSCRIPTION") }, wantErr: true},
+		{
+			name:    "正常",
+			mutate:  func(_ map[string]string) {},
+			wantErr: false,
+		},
+		{
+			name:    "ENV 欠け",
+			mutate:  func(m map[string]string) { delete(m, "ENV") },
+			wantErr: true,
+		},
+		{
+			name:    "ENV 未知値",
+			mutate:  func(m map[string]string) { m["ENV"] = "dev" },
+			wantErr: true,
+		},
+		{
+			name:    "ENV = staging",
+			mutate:  func(m map[string]string) { m["ENV"] = "staging" },
+			wantErr: false,
+		},
+		{
+			name:    "ENV = production",
+			mutate:  func(m map[string]string) { m["ENV"] = "production" },
+			wantErr: false,
+		},
+		{
+			name:    "INTERNAL_PORT 欠け",
+			mutate:  func(m map[string]string) { delete(m, "INTERNAL_PORT") },
+			wantErr: true,
+		},
+		{
+			name:    "INTERNAL_PORT 非整数",
+			mutate:  func(m map[string]string) { m["INTERNAL_PORT"] = "abc" },
+			wantErr: true,
+		},
+		{
+			name:    "ADMIN_PORT 欠け",
+			mutate:  func(m map[string]string) { delete(m, "ADMIN_PORT") },
+			wantErr: true,
+		},
+		{
+			name:    "ADMIN_PORT 非整数",
+			mutate:  func(m map[string]string) { m["ADMIN_PORT"] = "abc" },
+			wantErr: true,
+		},
+		{
+			name:    "internal / admin 同ポートは拒否",
+			mutate:  func(m map[string]string) { m["ADMIN_PORT"] = m["INTERNAL_PORT"] },
+			wantErr: true,
+		},
+		{
+			name:    "DATABASE_CONN 欠け",
+			mutate:  func(m map[string]string) { delete(m, "DATABASE_CONN") },
+			wantErr: true,
+		},
+		{
+			name:    "GOOGLE_CLOUD_PROJECT 欠け",
+			mutate:  func(m map[string]string) { delete(m, "GOOGLE_CLOUD_PROJECT") },
+			wantErr: true,
+		},
+		{
+			name:    "SUBSCRIPTION 欠け",
+			mutate:  func(m map[string]string) { delete(m, "NEWS_ARTICLE_COLLECTED_SUBSCRIPTION") },
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {

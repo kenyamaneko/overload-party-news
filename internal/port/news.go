@@ -29,25 +29,27 @@ type AdminNewsQuerier interface {
 }
 
 // NewsIngester は Pub/Sub subscriber が記事と翻訳を永続化するための write 操作。
-// 冪等性は ON CONFLICT DO NOTHING で担保する。
+// 記事と翻訳の挿入は独立した冪等操作として定義し、tx はアダプタ側でも張らない。
+// 「記事だけ入って翻訳なし」の中間状態は管理 UI の [ja 未作成] で扱える設計 (FEATURE_SPEC §7)。
 type NewsIngester interface {
-	// Insert は新規記事 + 複数翻訳を単一 tx で挿入する。
-	// - 親記事が既存なら inserted=false、何も書かれない (翻訳も DO NOTHING)
-	// - 親記事が新規なら inserted=true、翻訳も併せて INSERT される
-	Insert(ctx context.Context, article apinews.Article, translations []apinews.Translation) (inserted bool, err error)
+	// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
+	InsertArticle(ctx context.Context, article apinews.Article) (inserted bool, err error)
+	// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
+	// 校閲後の編集を newsfeed 再送で壊さない契約 (FEATURE_SPEC §3.2)。
+	InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error
 }
 
 // NewsReviewer は校閲ユースケース (承認・却下・翻訳 upsert) の write 操作。
 type NewsReviewer interface {
-	// ArticleExists は校閲対象の存在確認用。非存在なら ErrNotFound。
-	// 翻訳の有無は問わない (記事レベル操作のため)。
-	ArticleExists(ctx context.Context, articleID string) error
 	// Publish は status=published に遷移させ、published_at / reviewed_at / reviewer を now にセットする。
 	// 再承認 (既に published) でも published_at を更新する。
+	// 非存在記事なら ErrNotFound。
 	Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error
 	// Reject は status=rejected に遷移させ、reviewed_at / reviewer を now にセットする。published_at は保持。
+	// 非存在記事なら ErrNotFound。
 	Reject(ctx context.Context, articleID string, reviewer string, now time.Time) error
 	// UpsertTranslation は指定言語の翻訳を追加または更新する。
 	// news_articles には触れない (status / reviewed_at 等を変更しない)。
+	// 親記事が非存在の場合は ErrNotFound (FK 違反を変換して返す)。
 	UpsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error
 }

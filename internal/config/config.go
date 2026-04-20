@@ -29,7 +29,7 @@ type Config struct {
 	DatabaseConn string
 
 	// Pub/Sub 設定。
-	GoogleCloudProject              string
+	GoogleCloudProject               string
 	NewsArticleCollectedSubscription string
 }
 

@@ -32,20 +32,96 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 		wantErr       error
 		wantCallCount int
 	}{
-		{name: "ja 正常", lang: apinews.LangJa, title: "a", summary: "b", body: "c", wantErr: nil, wantCallCount: 1},
-		{name: "en 正常", lang: apinews.LangEn, title: "T", summary: "S", body: "B", wantErr: nil, wantCallCount: 1},
-		{name: "境界上限 (マルチバイト)", lang: apinews.LangJa, title: strings.Repeat("あ", review.TitleMaxLen), summary: strings.Repeat("い", review.SummaryMaxLen), body: "本文", wantErr: nil, wantCallCount: 1},
-
-		{name: "lang 空", lang: "", title: "a", summary: "b", body: "c", wantErr: review.ErrInvalidField, wantCallCount: 0},
-		{name: "lang 対応外", lang: "fr", title: "a", summary: "b", body: "c", wantErr: review.ErrInvalidField, wantCallCount: 0},
-
-		{name: "タイトル空", lang: apinews.LangJa, title: "", summary: "b", body: "c", wantErr: review.ErrInvalidField, wantCallCount: 0},
-		{name: "タイトル超過", lang: apinews.LangJa, title: strings.Repeat("a", review.TitleMaxLen+1), summary: "b", body: "c", wantErr: review.ErrInvalidField, wantCallCount: 0},
-
-		{name: "要約空", lang: apinews.LangJa, title: "a", summary: "", body: "c", wantErr: review.ErrInvalidField, wantCallCount: 0},
-		{name: "要約超過", lang: apinews.LangJa, title: "a", summary: strings.Repeat("b", review.SummaryMaxLen+1), body: "c", wantErr: review.ErrInvalidField, wantCallCount: 0},
-
-		{name: "本文空", lang: apinews.LangJa, title: "a", summary: "b", body: "", wantErr: review.ErrInvalidField, wantCallCount: 0},
+		{
+			name:          "ja 正常",
+			lang:          apinews.LangJa,
+			title:         "a",
+			summary:       "b",
+			body:          "c",
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "en 正常",
+			lang:          apinews.LangEn,
+			title:         "T",
+			summary:       "S",
+			body:          "B",
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "境界上限 (マルチバイト)",
+			lang:          apinews.LangJa,
+			title:         strings.Repeat("あ", review.TitleMaxLen),
+			summary:       strings.Repeat("い", review.SummaryMaxLen),
+			body:          "本文",
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "lang 空",
+			lang:          "",
+			title:         "a",
+			summary:       "b",
+			body:          "c",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "lang 対応外",
+			lang:          "fr",
+			title:         "a",
+			summary:       "b",
+			body:          "c",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "タイトル空",
+			lang:          apinews.LangJa,
+			title:         "",
+			summary:       "b",
+			body:          "c",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "タイトル超過",
+			lang:          apinews.LangJa,
+			title:         strings.Repeat("a", review.TitleMaxLen+1),
+			summary:       "b",
+			body:          "c",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "要約空",
+			lang:          apinews.LangJa,
+			title:         "a",
+			summary:       "",
+			body:          "c",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "要約超過",
+			lang:          apinews.LangJa,
+			title:         "a",
+			summary:       strings.Repeat("b", review.SummaryMaxLen+1),
+			body:          "c",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "本文空",
+			lang:          apinews.LangJa,
+			title:         "a",
+			summary:       "b",
+			body:          "",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
 	}
 
 	for _, tc := range cases {
@@ -74,15 +150,47 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 func TestPublishReject_仕様_reviewer必須_nowを注入(t *testing.T) {
 	cases := []struct {
 		name          string
-		op            string // "publish" or "reject"
+		call          func(svc *review.Service, reviewer string) error
 		reviewer      string
 		wantErr       error
 		wantCallCount int
 	}{
-		{name: "Publish 正常", op: "publish", reviewer: "alice@example.com", wantErr: nil, wantCallCount: 1},
-		{name: "Publish 空 reviewer", op: "publish", reviewer: "", wantErr: review.ErrInvalidField, wantCallCount: 0},
-		{name: "Reject 正常", op: "reject", reviewer: "alice@example.com", wantErr: nil, wantCallCount: 1},
-		{name: "Reject 空 reviewer", op: "reject", reviewer: "", wantErr: review.ErrInvalidField, wantCallCount: 0},
+		{
+			name: "Publish 正常",
+			call: func(s *review.Service, r string) error {
+				return s.Publish(context.Background(), "article-1", r)
+			},
+			reviewer:      "alice@example.com",
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name: "Publish 空 reviewer",
+			call: func(s *review.Service, r string) error {
+				return s.Publish(context.Background(), "article-1", r)
+			},
+			reviewer:      "",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name: "Reject 正常",
+			call: func(s *review.Service, r string) error {
+				return s.Reject(context.Background(), "article-1", r)
+			},
+			reviewer:      "alice@example.com",
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name: "Reject 空 reviewer",
+			call: func(s *review.Service, r string) error {
+				return s.Reject(context.Background(), "article-1", r)
+			},
+			reviewer:      "",
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
 	}
 
 	for _, tc := range cases {
@@ -91,29 +199,16 @@ func TestPublishReject_仕様_reviewer必須_nowを注入(t *testing.T) {
 			var callCount int
 			var gotNow time.Time
 			var gotReviewer string
-			repo := &port.MockNewsRepo{
-				PublishFn: func(_ context.Context, _ string, reviewer string, now time.Time) error {
-					callCount++
-					gotNow = now
-					gotReviewer = reviewer
-					return nil
-				},
-				RejectFn: func(_ context.Context, _ string, reviewer string, now time.Time) error {
-					callCount++
-					gotNow = now
-					gotReviewer = reviewer
-					return nil
-				},
+			recordCall := func(_ context.Context, _ string, reviewer string, now time.Time) error {
+				callCount++
+				gotNow = now
+				gotReviewer = reviewer
+				return nil
 			}
+			repo := &port.MockNewsRepo{PublishFn: recordCall, RejectFn: recordCall}
 			svc := newService(repo)
 
-			var err error
-			switch tc.op {
-			case "publish":
-				err = svc.Publish(context.Background(), "article-1", tc.reviewer)
-			case "reject":
-				err = svc.Reject(context.Background(), "article-1", tc.reviewer)
-			}
+			err := tc.call(svc, tc.reviewer)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantCallCount, callCount)
@@ -136,12 +231,48 @@ func TestList_仕様_statusフィルタ(t *testing.T) {
 		wantErr       error
 		wantCallCount int
 	}{
-		{name: "全件 (nil)", filter: nil, limit: 50, wantErr: nil, wantCallCount: 1},
-		{name: "pending のみ", filter: &pending, limit: 50, wantErr: nil, wantCallCount: 1},
-		{name: "published のみ", filter: &published, limit: 50, wantErr: nil, wantCallCount: 1},
-		{name: "rejected のみ", filter: &rejected, limit: 50, wantErr: nil, wantCallCount: 1},
-		{name: "下限未満 limit", filter: nil, limit: review.AdminListLimitMin - 1, wantErr: review.ErrInvalidField, wantCallCount: 0},
-		{name: "上限超過 limit", filter: nil, limit: review.AdminListLimitMax + 1, wantErr: review.ErrInvalidField, wantCallCount: 0},
+		{
+			name:          "全件 (nil)",
+			filter:        nil,
+			limit:         50,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "pending のみ",
+			filter:        &pending,
+			limit:         50,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "published のみ",
+			filter:        &published,
+			limit:         50,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "rejected のみ",
+			filter:        &rejected,
+			limit:         50,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "下限未満 limit",
+			filter:        nil,
+			limit:         review.AdminListLimitMin - 1,
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
+		{
+			name:          "上限超過 limit",
+			filter:        nil,
+			limit:         review.AdminListLimitMax + 1,
+			wantErr:       review.ErrInvalidField,
+			wantCallCount: 0,
+		},
 	}
 
 	for _, tc := range cases {

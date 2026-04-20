@@ -22,11 +22,36 @@ func TestList_仕様_langバリデーション(t *testing.T) {
 		wantErr       error
 		wantCallCount int
 	}{
-		{name: "ja", lang: apinews.LangJa, wantErr: nil, wantCallCount: 1},
-		{name: "en", lang: apinews.LangEn, wantErr: nil, wantCallCount: 1},
-		{name: "未指定", lang: "", wantErr: news.ErrLangRequired, wantCallCount: 0},
-		{name: "対応外 (fr)", lang: "fr", wantErr: news.ErrUnsupportedLang, wantCallCount: 0},
-		{name: "対応外 (大文字)", lang: "JA", wantErr: news.ErrUnsupportedLang, wantCallCount: 0},
+		{
+			name:          "ja",
+			lang:          apinews.LangJa,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "en",
+			lang:          apinews.LangEn,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "未指定",
+			lang:          "",
+			wantErr:       news.ErrLangRequired,
+			wantCallCount: 0,
+		},
+		{
+			name:          "対応外 (fr)",
+			lang:          "fr",
+			wantErr:       news.ErrUnsupportedLang,
+			wantCallCount: 0,
+		},
+		{
+			name:          "対応外 (大文字)",
+			lang:          "JA",
+			wantErr:       news.ErrUnsupportedLang,
+			wantCallCount: 0,
+		},
 	}
 
 	for _, tc := range cases {
@@ -55,12 +80,42 @@ func TestList_仕様_limitの範囲内のみ_repoが呼ばれる(t *testing.T) {
 		wantErr       error
 		wantCallCount int
 	}{
-		{name: "下限", limit: news.ListLimitMin, wantErr: nil, wantCallCount: 1},
-		{name: "デフォルト値", limit: news.ListLimitDefault, wantErr: nil, wantCallCount: 1},
-		{name: "上限", limit: news.ListLimitMax, wantErr: nil, wantCallCount: 1},
-		{name: "下限未満", limit: news.ListLimitMin - 1, wantErr: news.ErrInvalidLimit, wantCallCount: 0},
-		{name: "負値", limit: -1, wantErr: news.ErrInvalidLimit, wantCallCount: 0},
-		{name: "上限超過", limit: news.ListLimitMax + 1, wantErr: news.ErrInvalidLimit, wantCallCount: 0},
+		{
+			name:          "下限",
+			limit:         news.ListLimitMin,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "デフォルト値",
+			limit:         news.ListLimitDefault,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "上限",
+			limit:         news.ListLimitMax,
+			wantErr:       nil,
+			wantCallCount: 1,
+		},
+		{
+			name:          "下限未満",
+			limit:         news.ListLimitMin - 1,
+			wantErr:       news.ErrInvalidLimit,
+			wantCallCount: 0,
+		},
+		{
+			name:          "負値",
+			limit:         -1,
+			wantErr:       news.ErrInvalidLimit,
+			wantCallCount: 0,
+		},
+		{
+			name:          "上限超過",
+			limit:         news.ListLimitMax + 1,
+			wantErr:       news.ErrInvalidLimit,
+			wantCallCount: 0,
+		},
 	}
 
 	for _, tc := range cases {
@@ -105,19 +160,56 @@ func TestList_仕様_repoに渡す値とレスポンス透過(t *testing.T) {
 func TestGetDetail_仕様_langバリデーションとエラー透過(t *testing.T) {
 	someOtherErr := errors.New("db connection lost")
 
+	successDetail := &apinews.NewsDetail{ArticleID: "abc"}
+
 	cases := []struct {
-		name     string
-		lang     string
-		repoErr  error
-		wantErr  error
-		wantCall bool
+		name       string
+		lang       string
+		repoReturn *apinews.NewsDetail
+		repoErr    error
+		wantErr    error
+		wantCall   bool
 	}{
-		{name: "ja 成功", lang: apinews.LangJa, repoErr: nil, wantErr: nil, wantCall: true},
-		{name: "en 成功", lang: apinews.LangEn, repoErr: nil, wantErr: nil, wantCall: true},
-		{name: "repo の not found を透過", lang: apinews.LangJa, repoErr: port.ErrNotFound, wantErr: port.ErrNotFound, wantCall: true},
-		{name: "repo の DB 障害を透過", lang: apinews.LangJa, repoErr: someOtherErr, wantErr: someOtherErr, wantCall: true},
-		{name: "lang 未指定", lang: "", repoErr: nil, wantErr: news.ErrLangRequired, wantCall: false},
-		{name: "lang 対応外", lang: "fr", repoErr: nil, wantErr: news.ErrUnsupportedLang, wantCall: false},
+		{
+			name:       "ja 成功",
+			lang:       apinews.LangJa,
+			repoReturn: successDetail,
+			wantErr:    nil,
+			wantCall:   true,
+		},
+		{
+			name:       "en 成功",
+			lang:       apinews.LangEn,
+			repoReturn: successDetail,
+			wantErr:    nil,
+			wantCall:   true,
+		},
+		{
+			name:     "repo の not found を透過",
+			lang:     apinews.LangJa,
+			repoErr:  port.ErrNotFound,
+			wantErr:  port.ErrNotFound,
+			wantCall: true,
+		},
+		{
+			name:     "repo の DB 障害を透過",
+			lang:     apinews.LangJa,
+			repoErr:  someOtherErr,
+			wantErr:  someOtherErr,
+			wantCall: true,
+		},
+		{
+			name:     "lang 未指定",
+			lang:     "",
+			wantErr:  news.ErrLangRequired,
+			wantCall: false,
+		},
+		{
+			name:     "lang 対応外",
+			lang:     "fr",
+			wantErr:  news.ErrUnsupportedLang,
+			wantCall: false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -127,10 +219,7 @@ func TestGetDetail_仕様_langバリデーションとエラー透過(t *testing
 			repo := &port.MockNewsRepo{
 				GetPublishedByIDFn: func(_ context.Context, _ string, _ string) (*apinews.NewsDetail, error) {
 					called = true
-					if tc.repoErr != nil {
-						return nil, tc.repoErr
-					}
-					return &apinews.NewsDetail{ArticleID: "abc"}, nil
+					return tc.repoReturn, tc.repoErr
 				},
 			}
 			_, err := news.New(repo).GetDetail(context.Background(), "abc", tc.lang)

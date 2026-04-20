@@ -65,13 +65,41 @@ func TestList_仕様_statusクエリの受理範囲(t *testing.T) {
 		query      string
 		wantStatus int
 	}{
-		{name: "未指定は全件", query: "", wantStatus: http.StatusOK},
-		{name: "all は全件", query: "?status=all", wantStatus: http.StatusOK},
-		{name: "pending", query: "?status=pending", wantStatus: http.StatusOK},
-		{name: "published", query: "?status=published", wantStatus: http.StatusOK},
-		{name: "rejected", query: "?status=rejected", wantStatus: http.StatusOK},
-		{name: "未知値は 400", query: "?status=unknown", wantStatus: http.StatusBadRequest},
-		{name: "limit 非整数は 400", query: "?limit=xxx", wantStatus: http.StatusBadRequest},
+		{
+			name:       "未指定は全件",
+			query:      "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "all は全件",
+			query:      "?status=all",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "pending",
+			query:      "?status=pending",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "published",
+			query:      "?status=published",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "rejected",
+			query:      "?status=rejected",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "未知値は 400",
+			query:      "?status=unknown",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit 非整数は 400",
+			query:      "?limit=xxx",
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range cases {
@@ -94,13 +122,25 @@ func TestList_仕様_statusクエリの受理範囲(t *testing.T) {
 // 仕様: 一覧画面は常に ja タイトルで表示する。ja 翻訳があれば title を、なければ [ja 未作成] プレースホルダ。
 func TestList_仕様_jaタイトル表示(t *testing.T) {
 	cases := []struct {
-		name        string
+		name         string
 		translations []apinews.Translation
-		wantBodyHas string
+		wantBodyHas  string
 	}{
-		{name: "ja あり", translations: []apinews.Translation{{Lang: apinews.LangJa, Title: "ja-title"}}, wantBodyHas: "ja-title"},
-		{name: "en のみ", translations: []apinews.Translation{{Lang: apinews.LangEn, Title: "en-title"}}, wantBodyHas: "[ja 未作成]"},
-		{name: "翻訳なし", translations: nil, wantBodyHas: "[ja 未作成]"},
+		{
+			name:         "ja あり",
+			translations: []apinews.Translation{{Lang: apinews.LangJa, Title: "ja-title"}},
+			wantBodyHas:  "ja-title",
+		},
+		{
+			name:         "en のみ",
+			translations: []apinews.Translation{{Lang: apinews.LangEn, Title: "en-title"}},
+			wantBodyHas:  "[ja 未作成]",
+		},
+		{
+			name:         "翻訳なし",
+			translations: nil,
+			wantBodyHas:  "[ja 未作成]",
+		},
 	}
 
 	for _, tc := range cases {
@@ -132,9 +172,24 @@ func TestList_仕様_statusに応じてボタン表示が変わる(t *testing.T)
 		wantPub bool
 		wantRej bool
 	}{
-		{name: "pending は両方", status: apinews.StatusPending, wantPub: true, wantRej: true},
-		{name: "published は却下のみ", status: apinews.StatusPublished, wantPub: false, wantRej: true},
-		{name: "rejected は承認のみ", status: apinews.StatusRejected, wantPub: true, wantRej: false},
+		{
+			name:    "pending は両方",
+			status:  apinews.StatusPending,
+			wantPub: true,
+			wantRej: true,
+		},
+		{
+			name:    "published は却下のみ",
+			status:  apinews.StatusPublished,
+			wantPub: false,
+			wantRej: true,
+		},
+		{
+			name:    "rejected は承認のみ",
+			status:  apinews.StatusRejected,
+			wantPub: true,
+			wantRej: false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -159,25 +214,32 @@ func TestList_仕様_statusに応じてボタン表示が変わる(t *testing.T)
 
 // 仕様: 編集画面は存在する記事なら 200、存在しなければ 404。
 func TestGetEdit_仕様_404と200(t *testing.T) {
+	existing := sampleArticleWithJa("01", apinews.StatusPending)
+
 	cases := []struct {
 		name       string
+		repoReturn *apinews.ArticleWithTranslations
 		repoErr    error
 		wantStatus int
 	}{
-		{name: "存在する記事は 200", repoErr: nil, wantStatus: http.StatusOK},
-		{name: "存在しない記事は 404", repoErr: port.ErrNotFound, wantStatus: http.StatusNotFound},
+		{
+			name:       "存在する記事は 200",
+			repoReturn: &existing,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "存在しない記事は 404",
+			repoErr:    port.ErrNotFound,
+			wantStatus: http.StatusNotFound,
+		},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &port.MockNewsRepo{
-				GetByIDFn: func(_ context.Context, id string) (*apinews.ArticleWithTranslations, error) {
-					if tc.repoErr != nil {
-						return nil, tc.repoErr
-					}
-					aw := sampleArticleWithJa(id, apinews.StatusPending)
-					return &aw, nil
+				GetByIDFn: func(_ context.Context, _ string) (*apinews.ArticleWithTranslations, error) {
+					return tc.repoReturn, tc.repoErr
 				},
 			}
 			req := httptest.NewRequest(http.MethodGet, "/admin/articles/01", nil)
@@ -227,14 +289,24 @@ func TestGetEdit_仕様_全言語タブと初期値(t *testing.T) {
 // 仕様 (FEATURE_SPEC §6.2): UpsertTranslation は指定言語の翻訳を upsert、成功時は編集画面に戻る。
 func TestUpsertTranslation_仕様_成功時は編集画面へ戻る(t *testing.T) {
 	cases := []struct {
-		name          string
-		hxRequest     bool
-		wantStatus    int
-		wantHXHeader  string
-		wantLocation  string
+		name         string
+		extraHeaders map[string]string
+		wantStatus   int
+		wantHXHeader string
+		wantLocation string
 	}{
-		{name: "HTMX は 200 + HX-Redirect (編集画面へ)", hxRequest: true, wantStatus: http.StatusOK, wantHXHeader: "/admin/articles/01"},
-		{name: "非 HTMX は 303 + Location (編集画面へ)", hxRequest: false, wantStatus: http.StatusSeeOther, wantLocation: "/admin/articles/01"},
+		{
+			name:         "HTMX は 200 + HX-Redirect (編集画面へ)",
+			extraHeaders: map[string]string{"HX-Request": "true"},
+			wantStatus:   http.StatusOK,
+			wantHXHeader: "/admin/articles/01",
+		},
+		{
+			name:         "非 HTMX は 303 + Location (編集画面へ)",
+			extraHeaders: nil,
+			wantStatus:   http.StatusSeeOther,
+			wantLocation: "/admin/articles/01",
+		},
 	}
 
 	for _, tc := range cases {
@@ -257,8 +329,8 @@ func TestUpsertTranslation_仕様_成功時は編集画面へ戻る(t *testing.T
 			form := url.Values{"title": {"新タイトル"}, "summary": {"新要約"}, "body": {"新本文"}}
 			req := httptest.NewRequest(http.MethodPost, "/admin/articles/01/translations/ja", strings.NewReader(form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			if tc.hxRequest {
-				req.Header.Set("HX-Request", "true")
+			for k, v := range tc.extraHeaders {
+				req.Header.Set(k, v)
 			}
 			w := httptest.NewRecorder()
 			newAdminServer(t, repo).ServeHTTP(w, req)
@@ -282,12 +354,54 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 		body       string
 		wantStatus int
 	}{
-		{name: "正常 (ja)", lang: "ja", title: "t", summary: "s", body: "b", wantStatus: http.StatusOK},
-		{name: "正常 (en)", lang: "en", title: "t", summary: "s", body: "b", wantStatus: http.StatusOK},
-		{name: "未知 lang", lang: "fr", title: "t", summary: "s", body: "b", wantStatus: http.StatusBadRequest},
-		{name: "空 title", lang: "ja", title: "", summary: "s", body: "b", wantStatus: http.StatusBadRequest},
-		{name: "空 summary", lang: "ja", title: "t", summary: "", body: "b", wantStatus: http.StatusBadRequest},
-		{name: "空 body", lang: "ja", title: "t", summary: "s", body: "", wantStatus: http.StatusBadRequest},
+		{
+			name:       "正常 (ja)",
+			lang:       "ja",
+			title:      "t",
+			summary:    "s",
+			body:       "b",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "正常 (en)",
+			lang:       "en",
+			title:      "t",
+			summary:    "s",
+			body:       "b",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "未知 lang",
+			lang:       "fr",
+			title:      "t",
+			summary:    "s",
+			body:       "b",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "空 title",
+			lang:       "ja",
+			title:      "",
+			summary:    "s",
+			body:       "b",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "空 summary",
+			lang:       "ja",
+			title:      "t",
+			summary:    "",
+			body:       "b",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "空 body",
+			lang:       "ja",
+			title:      "t",
+			summary:    "s",
+			body:       "",
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range cases {
@@ -320,8 +434,20 @@ func TestPublish_仕様_HXTargetによる応答形式(t *testing.T) {
 		wantHXRedir string
 		wantBodyHas string
 	}{
-		{name: "行ターゲット指定は行フラグメント", hxTarget: "row-" + articleID, wantStatus: http.StatusOK, wantHXRedir: "", wantBodyHas: `id="row-` + articleID + `"`},
-		{name: "行ターゲット無指定は HX-Redirect (HTMX)", hxTarget: "body", wantStatus: http.StatusOK, wantHXRedir: "/admin/articles", wantBodyHas: ""},
+		{
+			name:        "行ターゲット指定は行フラグメント",
+			hxTarget:    "row-" + articleID,
+			wantStatus:  http.StatusOK,
+			wantHXRedir: "",
+			wantBodyHas: `id="row-` + articleID + `"`,
+		},
+		{
+			name:        "行ターゲット無指定は HX-Redirect (HTMX)",
+			hxTarget:    "body",
+			wantStatus:  http.StatusOK,
+			wantHXRedir: "/admin/articles",
+			wantBodyHas: "",
+		},
 	}
 
 	for _, tc := range cases {

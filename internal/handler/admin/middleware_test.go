@@ -15,14 +15,34 @@ import (
 func TestAuthMiddleware_production_IAP_ヘッダ要求(t *testing.T) {
 	cases := []struct {
 		name         string
-		header       string
+		headers      map[string]string
 		wantStatus   int
 		wantReviewer string
 	}{
-		{name: "プロバイダープレフィックス付き", header: "accounts.google.com:alice@example.com", wantStatus: http.StatusOK, wantReviewer: "alice@example.com"},
-		{name: "プレフィックスなし", header: "bob@example.com", wantStatus: http.StatusOK, wantReviewer: "bob@example.com"},
-		{name: "ヘッダ不在は401", header: "", wantStatus: http.StatusUnauthorized, wantReviewer: ""},
-		{name: "プレフィックスのみ (email 空) は401", header: "accounts.google.com:", wantStatus: http.StatusUnauthorized, wantReviewer: ""},
+		{
+			name:         "プロバイダープレフィックス付き",
+			headers:      map[string]string{"X-Goog-Authenticated-User-Email": "accounts.google.com:alice@example.com"},
+			wantStatus:   http.StatusOK,
+			wantReviewer: "alice@example.com",
+		},
+		{
+			name:         "プレフィックスなし",
+			headers:      map[string]string{"X-Goog-Authenticated-User-Email": "bob@example.com"},
+			wantStatus:   http.StatusOK,
+			wantReviewer: "bob@example.com",
+		},
+		{
+			name:         "ヘッダ不在は401",
+			headers:      nil,
+			wantStatus:   http.StatusUnauthorized,
+			wantReviewer: "",
+		},
+		{
+			name:         "プレフィックスのみ (email 空) は401",
+			headers:      map[string]string{"X-Goog-Authenticated-User-Email": "accounts.google.com:"},
+			wantStatus:   http.StatusUnauthorized,
+			wantReviewer: "",
+		},
 	}
 
 	for _, tc := range cases {
@@ -38,8 +58,8 @@ func TestAuthMiddleware_production_IAP_ヘッダ要求(t *testing.T) {
 			})
 
 			req := httptest.NewRequest(http.MethodGet, "/_probe", nil)
-			if tc.header != "" {
-				req.Header.Set("X-Goog-Authenticated-User-Email", tc.header)
+			for k, v := range tc.headers {
+				req.Header.Set(k, v)
 			}
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)
