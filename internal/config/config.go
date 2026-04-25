@@ -57,7 +57,7 @@ func FromEnv() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	gcpProject, err := requiredString("GOOGLE_CLOUD_PROJECT")
+	cloudProject, err := requiredString("GOOGLE_CLOUD_PROJECT")
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func FromEnv() (*Config, error) {
 		InternalPort:                     internalPort,
 		AdminPort:                        adminPort,
 		DatabaseConn:                     databaseConn,
-		GoogleCloudProject:               gcpProject,
+		GoogleCloudProject:               cloudProject,
 		NewsArticleCollectedSubscription: sub,
 	}, nil
 }

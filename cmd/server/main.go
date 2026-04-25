@@ -18,6 +18,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
+	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-news/internal/router"
 	"github.com/kenyamaneko/overload-party-news/internal/service/ingest"
@@ -63,13 +64,13 @@ func run() error {
 	}
 	subscriberH := subscriber.NewArticleCollectedHandler(ingestSvc)
 
-	sub, err := pubsub.New(ctx, cfg.GoogleCloudProject, cfg.NewsArticleCollectedSubscription)
+	stream, err := pubsub.NewStream(ctx, cfg.GoogleCloudProject, cfg.NewsArticleCollectedSubscription)
 	if err != nil {
-		return fmt.Errorf("build subscriber: %w", err)
+		return fmt.Errorf("build stream: %w", err)
 	}
 	defer func() {
-		if cerr := sub.Close(); cerr != nil {
-			slog.Error("subscriber close failed", "error", cerr)
+		if cerr := stream.Close(); cerr != nil {
+			slog.Error("stream close failed", "error", cerr)
 		}
 	}()
 
@@ -88,11 +89,11 @@ func run() error {
 		"internal_addr", internalSrv.Addr,
 		"admin_addr", adminSrv.Addr,
 		"env", cfg.Env,
-		"gcp_project", cfg.GoogleCloudProject,
+		"cloud_project", cfg.GoogleCloudProject,
 		"subscription", cfg.NewsArticleCollectedSubscription,
 	)
 
-	return runAll(ctx, internalSrv, adminSrv, sub, subscriberH.Handle)
+	return runAll(ctx, internalSrv, adminSrv, stream, subscriberH.Handle)
 }
 
 // setupLogger は env に応じて slog のハンドラを設定する。
@@ -137,9 +138,9 @@ func newCloudLoggingHandler() slog.Handler {
 	})
 }
 
-// runAll は 2 つの HTTP server と Pub/Sub subscriber を並行起動し、
+// runAll は 2 つの HTTP server と Pub/Sub stream を並行起動し、
 // いずれかの失敗・シグナルで全員を停止させる。
-func runAll(ctx context.Context, internalSrv, adminSrv *http.Server, sub *pubsub.Subscriber, handle pubsub.MessageHandler) error {
+func runAll(ctx context.Context, internalSrv, adminSrv *http.Server, stream *pubsub.Stream, handle port.MessageHandler) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -155,7 +156,7 @@ func runAll(ctx context.Context, internalSrv, adminSrv *http.Server, sub *pubsub
 		return nil
 	})
 	g.Go(func() error {
-		return sub.Receive(gCtx, handle)
+		return stream.Consume(gCtx, handle)
 	})
 
 	g.Go(func() error {
