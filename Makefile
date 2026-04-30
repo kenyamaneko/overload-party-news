@@ -1,12 +1,15 @@
-.PHONY: build test vet fmt run tidy db-up db-down db-reset help
+.PHONY: build test test-integration vet fmt run tidy db-up db-down db-reset help
 
 APP := overload-party-news
 
 build: ## Build Docker image
 	docker build -t $(APP) .
 
-test: ## Run tests (Testcontainers; requires Docker running)
+test: ## Run unit tests (Testcontainers; requires Docker running)
 	go test ./... -count=1 -race
+
+test-integration: ## Run unit + integration tests (Pub/Sub emulator container; slower)
+	go test -tags=integration ./... -count=1 -race
 
 vet: ## Run go vet
 	go vet ./...
