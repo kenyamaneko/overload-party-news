@@ -16,8 +16,13 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// PostgreSQL SQLSTATE. `foreign_key_violation` は親行が無いまま子を INSERT した場合に発生する。
-const pgCodeForeignKeyViolation = "23503"
+// PostgreSQL SQLSTATE.
+//   - foreign_key_violation: 親行が無いまま子を INSERT した場合に発生。
+//   - check_violation:       CHECK 制約に違反した値 (例: 未対応 lang) を書き込もうとした場合に発生。
+const (
+	pgCodeForeignKeyViolation = "23503"
+	pgCodeCheckViolation      = "23514"
+)
 
 // compile-time assertion: NewsRepository が port の全インタフェースを満たす。
 var (
@@ -37,15 +42,55 @@ func NewNewsRepository(pool *pgxpool.Pool) *NewsRepository {
 	return &NewsRepository{pool: pool}
 }
 
-// ListPublished は公開可能 (status=published) かつ指定 lang の翻訳がある記事を
+// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
+// 校閲状態は永続化せず、reviewed_at / published_at の組から導出する設計のため、
+// 新規行は両者 NULL で挿入される (= apinews.DeriveStatus で StatusPending)。
+func (r *NewsRepository) InsertArticle(ctx context.Context, article apinews.Article) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`INSERT INTO news.news_articles
+			(article_id, source, source_url, tags, source_published_at)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT DO NOTHING`,
+		article.ArticleID, article.Source, article.SourceURL, article.Tags,
+		article.SourcePublishedAt,
+	)
+	if err != nil {
+		return false, fmt.Errorf("insert article: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
+// 親記事が存在しない状態で呼ぶと FK 違反でエラーになる (呼び出し側で順序保証)。
+// CHECK 制約違反 (未対応 lang) は ErrInvalidPersistedValue に変換する。
+func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO news.news_article_translations
+			(article_id, lang, title, summary, body)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (article_id, lang) DO NOTHING`,
+		articleID, lang, title, summary, body,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgCodeCheckViolation {
+			return fmt.Errorf("lang=%q: %w", lang, port.ErrInvalidPersistedValue)
+		}
+		return fmt.Errorf("insert translation (lang=%s): %w", lang, err)
+	}
+	return nil
+}
+
+// ListPublished は公開可能 (= apinews.DeriveStatus が StatusPublished) かつ指定 lang の翻訳がある記事を
 // published_at DESC NULLS LAST, article_id DESC で limit 件返す。
+// 「公開」の述語 (published_at IS NOT NULL AND published_at >= reviewed_at) は DeriveStatus と 1:1 対応。
 func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT a.article_id, a.source, t.title, t.summary, a.tags, a.source_published_at, a.published_at
 		   FROM news.news_articles a
 		   JOIN news.news_article_translations t
 		     ON t.article_id = a.article_id AND t.lang = $1
-		  WHERE a.status = 'published'
+		  WHERE a.published_at IS NOT NULL AND a.published_at >= a.reviewed_at
 		  ORDER BY a.published_at DESC NULLS LAST, a.article_id DESC
 		  LIMIT $2`,
 		lang, limit,
@@ -72,7 +117,9 @@ func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit i
 	return items, nil
 }
 
-// GetPublishedByID は公開可能 + 指定 lang の翻訳がある単一記事を返す。非存在/非公開/翻訳なしは ErrNotFound。
+// GetPublishedByID は公開可能 + 指定 lang の翻訳がある単一記事の詳細 (body / source_url 含む) を返す。
+// 一覧用の ListPublished と違い body を含むため、詳細画面用のクエリとして分離している。
+// 非存在/非公開/翻訳なしは ErrNotFound。
 func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT a.article_id, a.source, t.title, t.summary, t.body, a.tags,
@@ -80,7 +127,8 @@ func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string,
 		   FROM news.news_articles a
 		   JOIN news.news_article_translations t
 		     ON t.article_id = a.article_id AND t.lang = $2
-		  WHERE a.article_id = $1 AND a.status = 'published'`,
+		  WHERE a.article_id = $1
+		    AND a.published_at IS NOT NULL AND a.published_at >= a.reviewed_at`,
 		articleID, lang,
 	)
 	var d apinews.NewsDetail
@@ -96,64 +144,40 @@ func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string,
 	return &d, nil
 }
 
-// ListByStatus は status フィルタ付きで記事 + 各記事の全翻訳を ingested_at DESC で limit 件返す。
-// statusFilter が nil のとき全件。
-// 翻訳は別クエリで一括取得する (1+1 クエリ、N+1 ではない)。
-func (r *NewsRepository) ListByStatus(ctx context.Context, statusFilter *apinews.Status, limit int) ([]apinews.ArticleWithTranslations, error) {
-	const selectArticles = `SELECT article_id, source, source_url, tags, status,
-		source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
-		   FROM news.news_articles`
-
-	var (
-		rows pgx.Rows
-		err  error
+// ListArticles は記事を ingested_at DESC で limit 件返す。フィルタは行わない (純粋な永続層)。
+// status による絞り込みは service 層で apinews.DeriveStatus を使って実施する。
+func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]apinews.Article, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT article_id, source, source_url, tags,
+		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
+		   FROM news.news_articles
+		  ORDER BY ingested_at DESC
+		  LIMIT $1`,
+		limit,
 	)
-	if statusFilter == nil {
-		rows, err = r.pool.Query(ctx,
-			selectArticles+` ORDER BY ingested_at DESC LIMIT $1`, limit)
-	} else {
-		rows, err = r.pool.Query(ctx,
-			selectArticles+` WHERE status = $1 ORDER BY ingested_at DESC LIMIT $2`,
-			string(*statusFilter), limit)
-	}
 	if err != nil {
-		return nil, fmt.Errorf("query articles by status: %w", err)
+		return nil, fmt.Errorf("query articles: %w", err)
 	}
 	defer rows.Close()
 
 	var articles []apinews.Article
-	articleIDs := make([]string, 0)
 	for rows.Next() {
 		a, err := scanArticle(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan article row: %w", err)
 		}
 		articles = append(articles, *a)
-		articleIDs = append(articleIDs, a.ArticleID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate articles: %w", err)
 	}
-
-	translationsByArticle, err := r.fetchTranslationsForIDs(ctx, articleIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	results := make([]apinews.ArticleWithTranslations, 0, len(articles))
-	for _, a := range articles {
-		results = append(results, apinews.ArticleWithTranslations{
-			Article:      a,
-			Translations: translationsByArticle[a.ArticleID],
-		})
-	}
-	return results, nil
+	return articles, nil
 }
 
-// GetByID は status を問わず記事 + 全翻訳を返す。非存在なら ErrNotFound。
-func (r *NewsRepository) GetByID(ctx context.Context, articleID string) (*apinews.ArticleWithTranslations, error) {
+// GetArticleByID は status を問わず記事を返す。非存在なら ErrNotFound。
+func (r *NewsRepository) GetArticleByID(ctx context.Context, articleID string) (*apinews.Article, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT article_id, source, source_url, tags, status,
+		`SELECT article_id, source, source_url, tags,
 		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
 		   FROM news.news_articles
 		  WHERE article_id = $1`,
@@ -166,67 +190,61 @@ func (r *NewsRepository) GetByID(ctx context.Context, articleID string) (*apinew
 		}
 		return nil, fmt.Errorf("query article: %w", err)
 	}
-
-	translationsByArticle, err := r.fetchTranslationsForIDs(ctx, []string{articleID})
-	if err != nil {
-		return nil, err
-	}
-	return &apinews.ArticleWithTranslations{
-		Article:      *article,
-		Translations: translationsByArticle[articleID],
-	}, nil
+	return article, nil
 }
 
-// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
-func (r *NewsRepository) InsertArticle(ctx context.Context, article apinews.Article) (bool, error) {
-	tag, err := r.pool.Exec(ctx,
-		`INSERT INTO news.news_articles
-			(article_id, source, source_url, tags, status, source_published_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT DO NOTHING`,
-		article.ArticleID, article.Source, article.SourceURL, article.Tags,
-		string(apinews.StatusPending), article.SourcePublishedAt,
+// ListTranslationsByArticleIDs は指定 article_id 群の翻訳行を 1 クエリで返す。
+// グループ化は行わない (呼び出し側で必要なら article_id でまとめる)。
+func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]apinews.Translation, error) {
+	if len(articleIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT article_id, lang, title, summary, body, created_at, updated_at
+		   FROM news.news_article_translations
+		  WHERE article_id = ANY($1)
+		  ORDER BY article_id, lang`,
+		articleIDs,
 	)
 	if err != nil {
-		return false, fmt.Errorf("insert article: %w", err)
+		return nil, fmt.Errorf("query translations: %w", err)
 	}
-	return tag.RowsAffected() == 1, nil
+	defer rows.Close()
+
+	var translations []apinews.Translation
+	for rows.Next() {
+		var t apinews.Translation
+		if err := rows.Scan(
+			&t.ArticleID, &t.Lang, &t.Title, &t.Summary, &t.Body, &t.CreatedAt, &t.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan translation: %w", err)
+		}
+		translations = append(translations, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate translations: %w", err)
+	}
+	return translations, nil
 }
 
-// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
-// 親記事が存在しない状態で呼ぶと FK 違反でエラーになる (呼び出し側で順序保証)。
-func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO news.news_article_translations
-			(article_id, lang, title, summary, body)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (article_id, lang) DO NOTHING`,
-		articleID, lang, title, summary, body,
-	)
-	if err != nil {
-		return fmt.Errorf("insert translation (lang=%s): %w", lang, err)
-	}
-	return nil
-}
-
-// Publish は承認遷移。非存在なら ErrNotFound。
+// Publish は承認遷移。published_at と reviewed_at を同時刻にセットすることで
+// apinews.DeriveStatus が StatusPublished を返す状態を作る。非存在なら ErrNotFound。
 func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
-		    SET status = 'published',
-		        published_at = $2,
+		    SET published_at = $2,
 		        reviewed_at = $2,
 		        reviewer = $3
 		  WHERE article_id = $1`,
 		articleID, now, reviewer)
 }
 
-// Reject は却下遷移。published_at は変更しない (再承認時の履歴参照用)。
+// Reject は却下遷移。reviewed_at だけ更新し、published_at は保持する (再承認時の履歴参照用)。
+// 結果として published_at < reviewed_at となり、apinews.DeriveStatus が StatusRejected を返す。
 func (r *NewsRepository) Reject(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
-		    SET status = 'rejected',
-		        reviewed_at = $2,
+		    SET reviewed_at = $2,
 		        reviewer = $3
 		  WHERE article_id = $1`,
 		articleID, now, reviewer)
@@ -247,8 +265,13 @@ func (r *NewsRepository) UpsertTranslation(ctx context.Context, articleID string
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgCodeForeignKeyViolation {
-			return fmt.Errorf("article %s: %w", articleID, port.ErrNotFound)
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case pgCodeForeignKeyViolation:
+				return fmt.Errorf("article %s: %w", articleID, port.ErrNotFound)
+			case pgCodeCheckViolation:
+				return fmt.Errorf("lang=%q: %w", lang, port.ErrInvalidPersistedValue)
+			}
 		}
 		return fmt.Errorf("upsert translation: %w", err)
 	}
@@ -267,52 +290,16 @@ func (r *NewsRepository) updateReviewed(ctx context.Context, articleID string, s
 	return nil
 }
 
-// fetchTranslationsForIDs は指定 article_id 集合の翻訳を 1 クエリで取得し、
-// article_id キーでグループ化して返す (N+1 回避)。
-func (r *NewsRepository) fetchTranslationsForIDs(ctx context.Context, ids []string) (map[string][]apinews.Translation, error) {
-	if len(ids) == 0 {
-		return map[string][]apinews.Translation{}, nil
-	}
-	rows, err := r.pool.Query(ctx,
-		`SELECT article_id, lang, title, summary, body, created_at, updated_at
-		   FROM news.news_article_translations
-		  WHERE article_id = ANY($1)
-		  ORDER BY article_id, lang`,
-		ids,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query translations: %w", err)
-	}
-	defer rows.Close()
-
-	grouped := make(map[string][]apinews.Translation)
-	for rows.Next() {
-		var t apinews.Translation
-		if err := rows.Scan(
-			&t.ArticleID, &t.Lang, &t.Title, &t.Summary, &t.Body, &t.CreatedAt, &t.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan translation: %w", err)
-		}
-		grouped[t.ArticleID] = append(grouped[t.ArticleID], t)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate translations: %w", err)
-	}
-	return grouped, nil
-}
-
 // scanArticle は Article 全カラム分の Scan を共通化する。
+// Status は永続化されないため Scan 後は空 (呼び出し側 service が apinews.DeriveStatus で埋める)。
 func scanArticle(row pgx.Row) (*apinews.Article, error) {
 	var a apinews.Article
-	var status string
 	if err := row.Scan(
 		&a.ArticleID, &a.Source, &a.SourceURL, &a.Tags,
-		&status,
 		&a.SourcePublishedAt, &a.PublishedAt, &a.IngestedAt,
 		&a.ReviewedAt, &a.Reviewer, &a.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
-	a.Status = apinews.Status(status)
 	return &a, nil
 }

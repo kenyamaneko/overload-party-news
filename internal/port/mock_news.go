@@ -10,15 +10,16 @@ import (
 // MockNewsRepo は port の 4 インタフェースをすべて実装する 1 個のモック。
 // テストでは必要な Fn フィールドだけ埋めて使い、未設定のメソッド呼び出しは panic で意図しない呼び出しを検出する。
 type MockNewsRepo struct {
-	ListPublishedFn     func(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error)
-	GetPublishedByIDFn  func(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error)
-	ListByStatusFn      func(ctx context.Context, statusFilter *apinews.Status, limit int) ([]apinews.ArticleWithTranslations, error)
-	GetByIDFn           func(ctx context.Context, articleID string) (*apinews.ArticleWithTranslations, error)
-	InsertArticleFn     func(ctx context.Context, article apinews.Article) (bool, error)
-	InsertTranslationFn func(ctx context.Context, articleID string, lang, title, summary, body string) error
-	PublishFn           func(ctx context.Context, articleID string, reviewer string, now time.Time) error
-	RejectFn            func(ctx context.Context, articleID string, reviewer string, now time.Time) error
-	UpsertTranslationFn func(ctx context.Context, articleID string, lang, title, summary, body string) error
+	ListPublishedFn                func(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error)
+	GetPublishedByIDFn             func(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error)
+	ListArticlesFn                 func(ctx context.Context, limit int) ([]apinews.Article, error)
+	GetArticleByIDFn               func(ctx context.Context, articleID string) (*apinews.Article, error)
+	ListTranslationsByArticleIDsFn func(ctx context.Context, articleIDs []string) ([]apinews.Translation, error)
+	InsertArticleFn                func(ctx context.Context, article apinews.Article) (bool, error)
+	InsertTranslationFn            func(ctx context.Context, articleID string, lang, title, summary, body string) error
+	PublishFn                      func(ctx context.Context, articleID string, reviewer string, now time.Time) error
+	RejectFn                       func(ctx context.Context, articleID string, reviewer string, now time.Time) error
+	UpsertTranslationFn            func(ctx context.Context, articleID string, lang, title, summary, body string) error
 }
 
 var (
@@ -42,18 +43,25 @@ func (m *MockNewsRepo) GetPublishedByID(ctx context.Context, articleID string, l
 	return m.GetPublishedByIDFn(ctx, articleID, lang)
 }
 
-func (m *MockNewsRepo) ListByStatus(ctx context.Context, statusFilter *apinews.Status, limit int) ([]apinews.ArticleWithTranslations, error) {
-	if m.ListByStatusFn == nil {
-		panic("MockNewsRepo.ListByStatus called without Fn")
+func (m *MockNewsRepo) ListArticles(ctx context.Context, limit int) ([]apinews.Article, error) {
+	if m.ListArticlesFn == nil {
+		panic("MockNewsRepo.ListArticles called without Fn")
 	}
-	return m.ListByStatusFn(ctx, statusFilter, limit)
+	return m.ListArticlesFn(ctx, limit)
 }
 
-func (m *MockNewsRepo) GetByID(ctx context.Context, articleID string) (*apinews.ArticleWithTranslations, error) {
-	if m.GetByIDFn == nil {
-		panic("MockNewsRepo.GetByID called without Fn")
+func (m *MockNewsRepo) GetArticleByID(ctx context.Context, articleID string) (*apinews.Article, error) {
+	if m.GetArticleByIDFn == nil {
+		panic("MockNewsRepo.GetArticleByID called without Fn")
 	}
-	return m.GetByIDFn(ctx, articleID)
+	return m.GetArticleByIDFn(ctx, articleID)
+}
+
+func (m *MockNewsRepo) ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]apinews.Translation, error) {
+	if m.ListTranslationsByArticleIDsFn == nil {
+		panic("MockNewsRepo.ListTranslationsByArticleIDs called without Fn")
+	}
+	return m.ListTranslationsByArticleIDsFn(ctx, articleIDs)
 }
 
 func (m *MockNewsRepo) InsertArticle(ctx context.Context, article apinews.Article) (bool, error) {

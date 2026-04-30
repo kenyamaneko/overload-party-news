@@ -35,37 +35,37 @@ func TestList_仕様_クエリバリデーション(t *testing.T) {
 		wantStatus int
 	}{
 		{
-			name:       "lang=ja 未 limit",
-			query:      "?lang=ja",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "lang=en 未 limit",
-			query:      "?lang=en",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "lang + limit 指定",
+			name:       "lang + limit 指定で 200",
 			query:      "?lang=ja&limit=10",
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:       "lang 未指定は 400",
-			query:      "",
-			wantStatus: http.StatusBadRequest,
+			name:       "lang=en + limit 指定で 200",
+			query:      "?lang=en&limit=10",
+			wantStatus: http.StatusOK,
 		},
 		{
-			name:       "lang 未指定 (limit のみ) も 400",
+			name:       "lang 未指定は 400",
 			query:      "?limit=10",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "lang 対応外は 400",
-			query:      "?lang=fr",
+			name:       "limit 未指定は 400 (デフォルト値へのフォールバックは行わない)",
+			query:      "?lang=ja",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "limit 下限未満は 400",
+			name:       "クエリ全未指定は 400",
+			query:      "",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "lang 対応外は 400",
+			query:      "?lang=fr&limit=10",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit=0 は 400",
 			query:      "?lang=ja&limit=0",
 			wantStatus: http.StatusBadRequest,
 		},
@@ -109,7 +109,7 @@ func TestList_仕様_空配列(t *testing.T) {
 	}
 	h := rest.NewNewsHandler(news.New(repo))
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news?lang=ja", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news?lang=ja&limit=10", nil)
 	w := httptest.NewRecorder()
 	newEngine(h).ServeHTTP(w, req)
 
@@ -135,7 +135,7 @@ func TestList_仕様_レスポンス形(t *testing.T) {
 	}
 	h := rest.NewNewsHandler(news.New(repo))
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news?lang=en", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news?lang=en&limit=10", nil)
 	w := httptest.NewRecorder()
 	newEngine(h).ServeHTTP(w, req)
 

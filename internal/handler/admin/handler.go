@@ -39,7 +39,7 @@ func NewHandler(svc *review.Service) (*Handler, error) {
 // List は GET /admin/articles。status フィルタ付きの一覧ページを返す。
 // 各記事は ja タイトルで表示する (運用者が日本語話者前提)。
 func (h *Handler) List(c *gin.Context) {
-	statusFilter, statusParam, err := parseStatusFilter(c.Query("status"))
+	statuses, statusParam, err := parseStatusFilter(c.QueryArray("status"))
 	if err != nil {
 		respondError(c, err)
 		return
@@ -50,7 +50,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	articles, err := h.svc.List(c.Request.Context(), statusFilter, limit)
+	articles, err := h.svc.List(c.Request.Context(), statuses, limit)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -199,30 +199,53 @@ func headerTitle(aw *apinews.ArticleWithTranslations) string {
 	return aw.Article.ArticleID
 }
 
-// parseStatusFilter は status クエリを Status フィルタに変換する。
-// 未指定 / "all" → nil (全件)、既知値 → 対応 Status、未知値 → ErrInvalidField。
-// 2 つ目の返り値はテンプレートで active タブをハイライトするための文字列。
-func parseStatusFilter(raw string) (*apinews.Status, string, error) {
-	switch raw {
-	case "", "all":
-		return nil, "", nil
-	case string(apinews.StatusPending):
-		s := apinews.StatusPending
-		return &s, raw, nil
-	case string(apinews.StatusPublished):
-		s := apinews.StatusPublished
-		return &s, raw, nil
-	case string(apinews.StatusRejected):
-		s := apinews.StatusRejected
-		return &s, raw, nil
-	default:
-		return nil, "", fmt.Errorf("%w: unknown status %q", review.ErrInvalidField, raw)
+// parseStatusFilter は status クエリ群を Status 集合フィルタに変換する。
+// 未指定 / 単一 "all" → apinews.Statuses (全 status 列挙)、既知値群 → 対応 Status 列、未知値混在 → ErrInvalidField。
+// 重複は除去する。複数指定 (?status=pending&status=published) は IN 句相当として扱う。
+// 2 つ目の返り値はテンプレートで active タブをハイライトするための文字列
+// (単一指定なら値そのもの、複数指定ならカンマ結合、全件なら空)。
+func parseStatusFilter(raws []string) ([]apinews.Status, string, error) {
+	if len(raws) == 0 {
+		return apinews.Statuses, "", nil
 	}
+	if len(raws) == 1 && (raws[0] == "" || raws[0] == "all") {
+		return apinews.Statuses, "", nil
+	}
+
+	seen := make(map[apinews.Status]struct{}, len(raws))
+	statuses := make([]apinews.Status, 0, len(raws))
+	for _, raw := range raws {
+		var s apinews.Status
+		switch raw {
+		case string(apinews.StatusPending):
+			s = apinews.StatusPending
+		case string(apinews.StatusPublished):
+			s = apinews.StatusPublished
+		case string(apinews.StatusRejected):
+			s = apinews.StatusRejected
+		default:
+			return nil, "", fmt.Errorf("%w: unknown status %q", review.ErrInvalidField, raw)
+		}
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		statuses = append(statuses, s)
+	}
+
+	parts := make([]string, len(statuses))
+	for i, s := range statuses {
+		parts[i] = string(s)
+	}
+	return statuses, strings.Join(parts, ","), nil
 }
 
+// parseAdminLimit は ?limit= クエリを int に変換する。
+// 未指定や非整数は ErrInvalidField を返す (デフォルト値へのフォールバックを行わない方針)。
+// 値の範囲バリデーションは service 層が行う。
 func parseAdminLimit(raw string) (int, error) {
 	if raw == "" {
-		return review.AdminListLimitDefault, nil
+		return 0, fmt.Errorf("%w: limit is required", review.ErrInvalidField)
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil {

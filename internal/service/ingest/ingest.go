@@ -42,7 +42,6 @@ func (s *Service) Insert(ctx context.Context, event apinews.ArticleCollectedEven
 		Source:            event.Source,
 		SourceURL:         event.SourceURL,
 		Tags:              event.Tags,
-		Status:            apinews.StatusPending,
 		SourcePublishedAt: event.SourcePublishedAt,
 	}
 	inserted, err = s.ingester.InsertArticle(ctx, article)

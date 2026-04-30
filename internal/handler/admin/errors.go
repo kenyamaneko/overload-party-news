@@ -15,7 +15,7 @@ func errorStatus(err error) int {
 	switch {
 	case errors.Is(err, port.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, review.ErrInvalidField):
+	case errors.Is(err, review.ErrInvalidField), errors.Is(err, port.ErrInvalidPersistedValue):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrMissingIAPHeader):
 		return http.StatusUnauthorized

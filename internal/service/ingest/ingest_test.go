@@ -157,8 +157,7 @@ func TestInsert_仕様_イベントバリデーション(t *testing.T) {
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantArticleCallCount, articleCalls)
 			assert.Equal(t, tc.wantTransCallCount, transCalls)
-			// 呼ばれたケースのみ status=pending で INSERT されるのを確認
-			assert.Equal(t, map[int]apinews.Status{0: "", 1: apinews.StatusPending}[articleCalls], gotArticle.Status)
+			_ = gotArticle // status は永続化されず派生するため、Insert 経路では検証しない
 		})
 	}
 }
@@ -246,13 +245,12 @@ func TestInsert_仕様_イベントから変換される値(t *testing.T) {
 	_, err := ingest.New(repo).Insert(context.Background(), event)
 	require.NoError(t, err)
 
-	// Article
+	// Article (status は永続化されず派生するため検証対象外)
 	assert.Equal(t, event.ArticleID, gotArticle.ArticleID)
 	assert.Equal(t, event.Source, gotArticle.Source)
 	assert.Equal(t, event.SourceURL, gotArticle.SourceURL)
 	assert.Equal(t, event.Tags, gotArticle.Tags)
 	assert.Equal(t, event.SourcePublishedAt, gotArticle.SourcePublishedAt)
-	assert.Equal(t, apinews.StatusPending, gotArticle.Status)
 
 	// ja Translation
 	assert.Equal(t, event.ArticleID, gotArticleID)

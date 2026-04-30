@@ -19,13 +19,18 @@ type PublicNewsQuerier interface {
 }
 
 // AdminNewsQuerier は管理 UI が必要とする read 操作。
-// 記事とその全翻訳をまとめて取得する (編集画面で言語タブを表示するため)。
+// 記事と翻訳の取得は分離されており、結合は呼び出し側 (service 層) の責務。
+// 校閲状態 (status) のフィルタも service 層で apinews.DeriveStatus を使って行う方針のため、
+// repo は status 概念を一切知らない (純粋な永続層)。
 type AdminNewsQuerier interface {
-	// ListByStatus は status でフィルタされた記事 + その翻訳群を ingested_at DESC で limit 件返す。
-	// statusFilter が nil のとき全件。
-	ListByStatus(ctx context.Context, statusFilter *apinews.Status, limit int) ([]apinews.ArticleWithTranslations, error)
-	// GetByID は status を問わず記事 + 全翻訳を返す。非存在なら ErrNotFound。
-	GetByID(ctx context.Context, articleID string) (*apinews.ArticleWithTranslations, error)
+	// ListArticles は記事を ingested_at DESC で limit 件返す。フィルタは行わない。
+	// status による絞り込みは取得後に service 層で実施する契約。
+	ListArticles(ctx context.Context, limit int) ([]apinews.Article, error)
+	// GetArticleByID は記事を返す。非存在なら ErrNotFound。
+	GetArticleByID(ctx context.Context, articleID string) (*apinews.Article, error)
+	// ListTranslationsByArticleIDs は指定 article_id 群の翻訳を 1 クエリで返す。
+	// 並びは article_id, lang。グループ化は呼び出し側で行う。
+	ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]apinews.Translation, error)
 }
 
 // NewsIngester は Pub/Sub subscriber が記事と翻訳を永続化するための write 操作。

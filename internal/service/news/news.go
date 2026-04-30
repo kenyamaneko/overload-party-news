@@ -6,17 +6,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// FEATURE_SPEC.md §4 で定める一覧 limit の許容範囲。
-const (
-	ListLimitMin     = 1
-	ListLimitMax     = 100
-	ListLimitDefault = 20
-)
+// ListLimitMax は一覧 limit の上限 (FEATURE_SPEC.md §4)。
+// 過大要求による I/O 圧迫を防ぐ安全弁。下限はゼロ以下を弾くだけで十分なため定数化していない。
+const ListLimitMax = 100
 
 // エラーセンチネル: handler が HTTP ステータスに変換する。
 var (
@@ -40,9 +38,9 @@ func (s *Service) List(ctx context.Context, lang string, limit int) ([]apinews.N
 	if err := validateLang(lang); err != nil {
 		return nil, err
 	}
-	if limit < ListLimitMin || limit > ListLimitMax {
-		return nil, fmt.Errorf("%w: limit=%d must be in [%d, %d]",
-			ErrInvalidLimit, limit, ListLimitMin, ListLimitMax)
+	if limit <= 0 || limit > ListLimitMax {
+		return nil, fmt.Errorf("%w: limit=%d must be in (0, %d]",
+			ErrInvalidLimit, limit, ListLimitMax)
 	}
 	return s.querier.ListPublished(ctx, lang, limit)
 }
@@ -56,13 +54,16 @@ func (s *Service) GetDetail(ctx context.Context, articleID string, lang string) 
 	return s.querier.GetPublishedByID(ctx, articleID, lang)
 }
 
-// validateLang は lang が空でなく対応言語であることを確認する。
-// 未指定 / 対応外は別エラー (handler で 400 にマップ) で識別する。
+// validateLang は lang を repo に渡す前に弾くことで「不正入力 (400)」と「該当データなし (404)」を区別するためにある。
+// lang は repo の SQL の JOIN 条件 (t.lang = $1) にそのまま渡るため、未対応値が来てもクエリ自体は成功し
+// 「結果が空」という形になる。それを repo まで通すと ErrNotFound と区別できなくなるため、
+// service 層で先に専用エラーを返す。
+// 未指定と対応外でエラーを分けてあるのは、handler / Gateway 側でメッセージやログを書き分けられる粒度を残すため。
 func validateLang(lang string) error {
 	if lang == "" {
 		return ErrLangRequired
 	}
-	if !apinews.IsSupportedLang(lang) {
+	if !slices.Contains(apinews.SupportedLangs, lang) {
 		return fmt.Errorf("%w: %q", ErrUnsupportedLang, lang)
 	}
 	return nil

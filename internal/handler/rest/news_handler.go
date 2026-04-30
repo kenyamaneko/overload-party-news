@@ -20,8 +20,8 @@ func NewNewsHandler(svc *news.Service) *NewsHandler {
 	return &NewsHandler{svc: svc}
 }
 
-// List は GET /internal/v1/news。lang (必須) と limit を解釈し、公開中記事の一覧を返す。
-// lang は必須 (未指定は 400)、limit 未指定は news.ListLimitDefault、範囲外は 400。
+// List は GET /internal/v1/news。lang (必須) と limit (必須) を解釈し、公開中記事の一覧を返す。
+// lang / limit いずれも未指定または不正値は 400。
 func (h *NewsHandler) List(c *gin.Context) {
 	lang := c.Query("lang")
 	limit, err := parseLimit(c.Query("limit"))
@@ -54,11 +54,12 @@ func (h *NewsHandler) GetDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
-// parseLimit は limit クエリを int に変換する。空なら default を返す。
+// parseLimit は limit クエリを int に変換する。
+// 未指定や非整数は ErrInvalidLimit を返す (デフォルト値へのフォールバックを行わない方針)。
 // 値の範囲バリデーションは service 層が行うため、ここでは整数変換のみ責任を持つ。
 func parseLimit(raw string) (int, error) {
 	if raw == "" {
-		return news.ListLimitDefault, nil
+		return 0, news.ErrInvalidLimit
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil {

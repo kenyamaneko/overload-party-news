@@ -2,8 +2,8 @@ package apinews
 
 import "time"
 
-// Status は news_articles.status に対応する enum 値。
-// 未知の値は news サービスが非公開扱いするフェイルセーフを備える。
+// Status は校閲状態の enum 値。テーブルには永続化せず、reviewed_at と published_at から導出する。
+// 導出規則は DeriveStatus が SSoT。
 type Status string
 
 const (
@@ -11,6 +11,30 @@ const (
 	StatusPublished Status = "published"
 	StatusRejected  Status = "rejected"
 )
+
+// Statuses は全 Status の列挙 (定義順を保つため slice)。
+// 「全件」を表現したいときに丸ごと渡すことで、リポジトリ層に「nil なら全件」の分岐を持たせない。
+var Statuses = []Status{StatusPending, StatusPublished, StatusRejected}
+
+// DeriveStatus は記事の reviewed_at / published_at から status を導出する。
+// 校閲状態の SSoT。repo の WHERE 述語と 1:1 で対応する。
+//
+// 規則 (Publish/Reject の仕様から導かれる):
+//   - reviewed_at IS NULL                                       → pending  (未校閲)
+//   - published_at IS NOT NULL ∧ published_at >= reviewed_at    → published (直近のレビューが Publish)
+//   - 上記以外                                                   → rejected (直近のレビューが Reject)
+//
+// Publish は published_at と reviewed_at を同時刻にセットし、Reject は reviewed_at のみ更新する。
+// したがって published_at >= reviewed_at は「最新のレビューが Publish だった」と等価。
+func DeriveStatus(a Article) Status {
+	if a.ReviewedAt == nil {
+		return StatusPending
+	}
+	if a.PublishedAt != nil && !a.PublishedAt.Before(*a.ReviewedAt) {
+		return StatusPublished
+	}
+	return StatusRejected
+}
 
 // 対応言語コード (MVP は ja / en のみ)。
 // 未知値はリクエスト時に ErrUnsupportedLang として弾く。
@@ -20,17 +44,8 @@ const (
 )
 
 // SupportedLangs はサポート対象の言語コード集合 (定義順を保つため slice)。
+// 許容値の SSoT は DB の news_article_translations.lang CHECK 制約で、本リストはそれと同期して保つ。
 var SupportedLangs = []string{LangJa, LangEn}
-
-// IsSupportedLang は lang が SupportedLangs に含まれるかを判定する。
-func IsSupportedLang(lang string) bool {
-	for _, l := range SupportedLangs {
-		if l == lang {
-			return true
-		}
-	}
-	return false
-}
 
 // Article は news_articles 行の言語非依存部分。
 // 公開 API のレスポンスは NewsListItem / NewsDetail に射影した上で返す。
