@@ -10,7 +10,7 @@ import (
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	"github.com/kenyamaneko/overload-party-news/internal/service/review"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
 var fixedNow = time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)

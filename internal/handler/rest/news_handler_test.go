@@ -16,7 +16,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	"github.com/kenyamaneko/overload-party-news/internal/service/news"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 

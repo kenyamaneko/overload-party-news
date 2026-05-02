@@ -11,7 +11,7 @@ import (
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	"github.com/kenyamaneko/overload-party-news/internal/service/ingest"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/ingest"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
@@ -187,6 +187,9 @@ func TestInsert_RepoResultPropagation(t *testing.T) {
 	}
 }
 
+// TestInsert_EventToRepoMapping は ArticleCollectedEvent の各フィールドが
+// repo 層 (InsertArticle / InsertTranslation) の引数に正しいフィールドへ
+// マッピングされることを担保する (フィールドの取り違え検出)。
 func TestInsert_EventToRepoMapping(t *testing.T) {
 	var gotArticle domain.Article
 	var gotArticleID, gotLang, gotTitle, gotSummary, gotBody string

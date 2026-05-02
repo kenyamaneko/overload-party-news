@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
-	"github.com/kenyamaneko/overload-party-news/internal/service/review"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
 // adminListItem は一覧画面描画用に ArticleWithTranslations を展開したビューモデル。

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/kenyamaneko/overload-party-news/internal/service/ingest"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/ingest"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 

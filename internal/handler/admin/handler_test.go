@@ -18,7 +18,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	"github.com/kenyamaneko/overload-party-news/internal/service/review"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
 func newAdminServer(t *testing.T, repo *port.MockNewsRepo) *gin.Engine {

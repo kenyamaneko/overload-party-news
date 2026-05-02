@@ -10,7 +10,7 @@ import (
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	"github.com/kenyamaneko/overload-party-news/internal/service/news"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
@@ -35,6 +35,12 @@ func TestList(t *testing.T) {
 			wantCount: news.ListLimitMax,
 		},
 		{
+			name:      "lang=en も通過する",
+			lang:      domain.LangEn,
+			limit:     1,
+			wantCount: 1,
+		},
+		{
 			name:    "lang 未指定は ErrLangRequired",
 			lang:    "",
 			limit:   news.ListLimitMax,
@@ -43,6 +49,12 @@ func TestList(t *testing.T) {
 		{
 			name:    "lang 対応外は ErrUnsupportedLang",
 			lang:    "fr",
+			limit:   news.ListLimitMax,
+			wantErr: news.ErrUnsupportedLang,
+		},
+		{
+			name:    "lang は大小文字を区別する (JA は ErrUnsupportedLang)",
+			lang:    "JA",
 			limit:   news.ListLimitMax,
 			wantErr: news.ErrUnsupportedLang,
 		},

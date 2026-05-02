@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kenyamaneko/overload-party-news/internal/service/news"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 

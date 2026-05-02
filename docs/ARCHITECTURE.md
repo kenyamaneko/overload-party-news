@@ -93,7 +93,7 @@ newsfeed が同じ記事を再送してきた場合、校閲済みのテキス�
 レイヤー配置は他の delivery 経路（REST / Pub/Sub subscriber）と同じく Clean Architecture に従う:
 
 - **handler 層**: 管理 UI の HTTP ルーティング・IAP middleware・テンプレート描画を担当する。REST handler とは別ルータを構築する（2 ポート構成）
-- **service 層**: 校閲ユースケース（承認・却下・編集）は REST handler も管理 UI handler も同じ service を呼ぶ。UI 固有のロジックを service に持たせない
+- **usecase 層**: 校閲ユースケース（承認・却下・編集）は REST handler も管理 UI handler も同じ usecase を呼ぶ。UI 固有のロジックを usecase に持たせない
 - **repository 層**: admin UI は同じ repo を読み書きするだけで、admin 固有の SQL を持たない
 - **テンプレート / static**: handler 層に同居し `embed.FS` でバイナリに同梱する
 
@@ -122,4 +122,4 @@ HTMX は `hx-target` / `hx-swap` で DOM の一部を差し替える。承認・
 - **無効化**: 校閲で `status` 遷移 / 翻訳 upsert が起きた瞬間に、影響する記事の全 lang 分のキャッシュを落とす
 - **管理 UI はキャッシュしない**: 校閲結果が即時に編集画面 / 一覧に反映される必要があるため
 
-校閲 → 無効化のフックは service 層から「記事 ID + 変化した lang 群」を通知するコールバックで行う。キャッシュ実装側は notify を受けて該当キーを削除する。service はキャッシュ実装を知らない責務分離を維持する。
+校閲 → 無効化のフックは usecase 層から「記事 ID + 変化した lang 群」を通知するコールバックで行う。キャッシュ実装側は notify を受けて該当キーを削除する。usecase はキャッシュ実装を知らない責務分離を維持する。

@@ -21,9 +21,9 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-news/internal/router"
-	"github.com/kenyamaneko/overload-party-news/internal/service/ingest"
-	"github.com/kenyamaneko/overload-party-news/internal/service/news"
-	"github.com/kenyamaneko/overload-party-news/internal/service/review"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/ingest"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
 func main() {

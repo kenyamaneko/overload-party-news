@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	"github.com/kenyamaneko/overload-party-news/internal/service/review"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
 // errorStatus はサービス層のエラーを HTTP ステータスにマップする。
