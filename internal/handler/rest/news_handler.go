@@ -20,8 +20,7 @@ func NewNewsHandler(uc *news.Interactor) *NewsHandler {
 	return &NewsHandler{uc: uc}
 }
 
-// List は GET /internal/v1/news。lang (必須) と limit (必須) を解釈し、公開中記事の一覧を返す。
-// lang / limit いずれも未指定または不正値は 400。
+// List は GET /internal/v1/news。lang / limit いずれも未指定または不正値は 400。
 func (h *NewsHandler) List(c *gin.Context) {
 	lang := c.Query("lang")
 	limit, err := parseLimit(c.Query("limit"))
@@ -41,8 +40,7 @@ func (h *NewsHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, apinews.NewsListResponse{Articles: items})
 }
 
-// GetDetail は GET /internal/v1/news/:articleId。指定 lang の公開中記事の詳細を返す。
-// 非公開 / 非存在 / 当該 lang 翻訳なしは 404。
+// GetDetail は GET /internal/v1/news/:articleId。非公開 / 非存在 / 当該 lang 翻訳なしは 404。
 func (h *NewsHandler) GetDetail(c *gin.Context) {
 	articleID := c.Param("articleId")
 	lang := c.Query("lang")
@@ -54,9 +52,7 @@ func (h *NewsHandler) GetDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
-// parseLimit は limit クエリを int に変換する。
-// 未指定や非整数は ErrInvalidLimit を返す (デフォルト値へのフォールバックを行わない方針)。
-// 値の範囲バリデーションは usecase 層が行うため、ここでは整数変換のみ責任を持つ。
+// parseLimit は limit クエリを int に変換する。未指定 / 非整数は ErrInvalidLimit (デフォルト埋めはしない)。
 func parseLimit(raw string) (int, error) {
 	if raw == "" {
 		return 0, news.ErrInvalidLimit

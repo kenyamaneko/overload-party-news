@@ -1,5 +1,4 @@
 // Package router は HTTP ルータ構築を一箇所に集める。
-// 内部 REST (gateway 向け) と admin UI は信頼境界が異なるため別ルータとして分離する (ARCHITECTURE.md)。
 package router
 
 import (
@@ -12,8 +11,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 )
 
-// NewInternal は gateway 向け内部 REST API のルータを構築する。
-// 認証は gateway 側で完了している前提で、news 側では追加認証を行わない。
+// NewInternal は gateway 向け内部 REST API のルータを構築する。news 側では追加認証を行わない (gateway で完了済前提)。
 func NewInternal(newsH *rest.NewsHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(requestLogger(), gin.Recovery())

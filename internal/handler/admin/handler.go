@@ -37,7 +37,6 @@ func NewHandler(uc *review.Interactor) (*Handler, error) {
 }
 
 // List は GET /admin/articles。status フィルタ付きの一覧ページを返す。
-// 各記事は ja タイトルで表示する (運用者が日本語話者前提)。
 func (h *Handler) List(c *gin.Context) {
 	statuses, statusParam, err := parseStatusFilter(c.QueryArray("status"))
 	if err != nil {
@@ -88,8 +87,7 @@ func (h *Handler) GetEdit(c *gin.Context) {
 	renderPage(c, h.tpl.edit, data)
 }
 
-// UpsertTranslation は POST /admin/articles/:articleId/translations/:lang。
-// 翻訳の追加 / 更新を行い、編集画面に戻る。
+// UpsertTranslation は POST /admin/articles/:articleId/translations/:lang。翻訳の追加 / 更新を行い編集画面に戻る。
 func (h *Handler) UpsertTranslation(c *gin.Context) {
 	articleID := c.Param("articleId")
 	lang := c.Param("lang")
@@ -125,8 +123,7 @@ func (h *Handler) Reject(c *gin.Context) {
 }
 
 // respondUpdatedRow は承認・却下後に最新の行 HTML を返す。
-// hx-target が #row-{articleId} のときだけ行フラグメントを返し、
-// それ以外は HX-Redirect または 303 でリストへ戻す (edit ページからの呼び出し等)。
+// hx-target が #row-{articleId} のときだけ行フラグメントを返し、それ以外は HX-Redirect / 303 でリストへ戻す。
 func (h *Handler) respondUpdatedRow(c *gin.Context, articleID string) {
 	aw, err := h.uc.Get(c.Request.Context(), articleID)
 	if err != nil {
@@ -159,8 +156,7 @@ func redirectTo(c *gin.Context, url string) {
 	c.Redirect(http.StatusSeeOther, url)
 }
 
-// renderPage はレイアウト込みのフルページ HTML を描画する。
-// gin.H の data には必ず Title / Reviewer が含まれる前提 (layout テンプレートの契約)。
+// renderPage はレイアウト込みのフルページ HTML を描画する。data には Title / Reviewer が必須 (layout の契約)。
 func renderPage(c *gin.Context, tpl *template.Template, data any) {
 	var buf bytes.Buffer
 	if err := tpl.ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -171,7 +167,6 @@ func renderPage(c *gin.Context, tpl *template.Template, data any) {
 }
 
 // toAdminListItem は ArticleWithTranslations から一覧表示用のビューモデルを作る。
-// ja タイトルを抽出し、存在する翻訳言語のラベルを組み立てる。
 func toAdminListItem(aw domain.ArticleWithTranslations) adminListItem {
 	var displayTitle string
 	langs := make([]string, 0, len(aw.Translations))
@@ -188,8 +183,7 @@ func toAdminListItem(aw domain.ArticleWithTranslations) adminListItem {
 	}
 }
 
-// headerTitle は編集画面の <title> に表示する文字列を決める。
-// ja 翻訳があればそのタイトル、無ければ article_id を使う。
+// headerTitle は編集画面の <title> に表示する文字列を決める。ja 翻訳があればそのタイトル、無ければ article_id。
 func headerTitle(aw *domain.ArticleWithTranslations) string {
 	for _, t := range aw.Translations {
 		if t.Lang == domain.LangJa {
@@ -200,10 +194,8 @@ func headerTitle(aw *domain.ArticleWithTranslations) string {
 }
 
 // parseStatusFilter は status クエリ群を Status 集合フィルタに変換する。
-// 未指定 / 単一 "all" → domain.Statuses (全 status 列挙)、既知値群 → 対応 Status 列、未知値混在 → ErrInvalidField。
-// 重複は除去する。複数指定 (?status=pending&status=published) は IN 句相当として扱う。
-// 2 つ目の返り値はテンプレートで active タブをハイライトするための文字列
-// (単一指定なら値そのもの、複数指定ならカンマ結合、全件なら空)。
+// 未指定 / "all" → domain.Statuses、既知値群 → 対応 Status 列、未知値混在 → ErrInvalidField。
+// 2 つ目の戻り値は active タブ表示用の文字列 (単一指定なら値、複数ならカンマ結合、全件なら空)。
 func parseStatusFilter(raws []string) ([]domain.Status, string, error) {
 	if len(raws) == 0 {
 		return domain.Statuses, "", nil
@@ -240,9 +232,7 @@ func parseStatusFilter(raws []string) ([]domain.Status, string, error) {
 	return statuses, strings.Join(parts, ","), nil
 }
 
-// parseAdminLimit は ?limit= クエリを int に変換する。
-// 未指定や非整数は ErrInvalidField を返す (デフォルト値へのフォールバックを行わない方針)。
-// 値の範囲バリデーションは usecase 層が行う。
+// parseAdminLimit は ?limit= クエリを int に変換する。未指定 / 非整数は ErrInvalidField (デフォルト埋めはしない)。
 func parseAdminLimit(raw string) (int, error) {
 	if raw == "" {
 		return 0, fmt.Errorf("%w: limit is required", review.ErrInvalidField)

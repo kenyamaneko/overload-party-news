@@ -1,6 +1,4 @@
-// Package pubsub は Cloud Pub/Sub subscription への adapter。
-// port / usecase 層が Pub/Sub のライブラリに直接依存しないよう、
-// 「バイトを受けて handler に委譲する Stream」として抽象化する。
+// Package pubsub は Cloud Pub/Sub subscription の port.MessageStream 実装。
 package pubsub
 
 import (
@@ -13,9 +11,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 )
 
-// Stream は Cloud Pub/Sub subscription を port.MessageStream として
-// 露出する adapter。cloud.google.com/go/pubsub/v2 の SDK 型依存は本 adapter に
-// 閉じ、handler 本体 (subscriber 層) は SDK を知らなくて済む。
+// Stream は Cloud Pub/Sub subscription を port.MessageStream として露出する adapter。
 type Stream struct {
 	client     *pubsub.Client
 	subscriber *pubsub.Subscriber
@@ -23,7 +19,7 @@ type Stream struct {
 
 // NewStream は指定 projectID / subscriptionID に接続した Stream を返す。
 // subscription / topic の作成は行わない (infra 側で事前に作成する前提)。
-// Close() 呼び出しまで内部 *pubsub.Client が保持されるため、main.go 側で defer Close が必須。
+// 内部 *pubsub.Client は Close() まで保持されるため、main.go 側で defer Close を必須とする。
 func NewStream(ctx context.Context, projectID, subscriptionID string) (*Stream, error) {
 	if projectID == "" || subscriptionID == "" {
 		return nil, errors.New("pubsub: projectID and subscriptionID are required")
@@ -39,8 +35,7 @@ func NewStream(ctx context.Context, projectID, subscriptionID string) (*Stream, 
 }
 
 // Consume は ctx がキャンセルされるまでメッセージを受信し続ける blocking call。
-// handler が nil を返した場合は ACK、non-nil を返した場合は NACK する。
-// ctx キャンセル時は Receive が nil を返すため、Consume も nil で終了する。
+// handler が nil を返したら ACK、non-nil なら NACK。
 func (s *Stream) Consume(ctx context.Context, handler port.MessageHandler) error {
 	err := s.subscriber.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
 		if err := handler(ctx, msg.Data); err != nil {

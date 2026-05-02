@@ -1,5 +1,5 @@
 // Package config は環境変数からサービス起動に必要な設定を読み込む。
-// デフォルト値へのフォールバックは行わず、必須変数が欠ければ即 fail する (CLAUDE.md 設計思想)。
+// 必須変数が欠ければ即 fail する (デフォルト値へのフォールバックは行わない)。
 package config
 
 import (
@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-// Env はサービスの動作環境を表す enum。IAP middleware のスキップ判定に使う。
+// Env はサービスの動作環境を表す enum。
 type Env string
 
 const (
@@ -21,20 +21,16 @@ const (
 type Config struct {
 	Env Env
 
-	// HTTP ポート。gateway 向け内部 API と admin UI を別ポートに分離する (ARCHITECTURE.md)。
 	InternalPort int
 	AdminPort    int
 
-	// PostgreSQL 接続文字列 (pgx 形式)。news スキーマへの書き込み権限を持つユーザーで接続する。
 	DatabaseConn string
 
-	// Pub/Sub 設定。
 	GoogleCloudProject               string
 	NewsArticleCollectedSubscription string
 }
 
-// FromEnv は process env から Config を構築する。
-// 必須変数が未設定の場合はエラーを返す (デフォルト埋めは行わない)。
+// FromEnv は process env から Config を構築する。必須変数が未設定ならエラー。
 func FromEnv() (*Config, error) {
 	env, err := parseEnv(os.Getenv("ENV"))
 	if err != nil {
@@ -88,7 +84,7 @@ func parseEnv(s string) (Env, error) {
 	}
 }
 
-// requiredString は必須の文字列 env を取得する。空文字列なら error。
+// requiredString は必須の文字列 env を取得する。空文字列ならエラー。
 func requiredString(name string) (string, error) {
 	v := os.Getenv(name)
 	if v == "" {

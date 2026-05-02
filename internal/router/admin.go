@@ -7,8 +7,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
 )
 
-// NewAdmin は管理 UI のルータを構築する。
-// IAP middleware を全 /admin/* に適用し、ENV=local ではヘッダ不要でパススルーする。
+// NewAdmin は管理 UI のルータを構築する。/admin/* に IAP middleware を適用する (ENV=local はパススルー)。
 func NewAdmin(env config.Env, adminH *admin.Handler) *gin.Engine {
 	r := gin.New()
 	r.Use(requestLogger(), gin.Recovery())

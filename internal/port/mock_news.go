@@ -8,7 +8,7 @@ import (
 )
 
 // MockNewsRepo は port の 4 インタフェースをすべて実装する 1 個のモック。
-// テストでは必要な Fn フィールドだけ埋めて使い、未設定のメソッド呼び出しは panic で意図しない呼び出しを検出する。
+// 必要な Fn フィールドだけ埋めて使う。未設定の呼び出しは panic で意図しない呼び出しを検出する。
 type MockNewsRepo struct {
 	ListPublishedFn                func(ctx context.Context, lang string, limit int) ([]domain.PublishedArticleSummary, error)
 	GetPublishedByIDFn             func(ctx context.Context, articleID string, lang string) (*domain.PublishedArticleDetail, error)

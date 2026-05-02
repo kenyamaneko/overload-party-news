@@ -1,5 +1,5 @@
-// Package news は公開 API (gateway → news) のユースケースを実装する。
-// 指定言語で公開可能な記事 (status = 'published' かつ翻訳あり) の一覧・詳細を返す read-only サービス。
+// Package news は公開 API (gateway → news) の usecase を実装する。
+// status = 'published' かつ翻訳ありの記事のみを返す read-only。
 package news
 
 import (
@@ -14,17 +14,15 @@ import (
 )
 
 // ListLimitMax は一覧 limit の上限 (FEATURE_SPEC.md)。
-// 過大要求による I/O 圧迫を防ぐ安全弁。下限はゼロ以下を弾くだけで十分なため定数化していない。
 const ListLimitMax = 100
 
-// エラーセンチネル: handler が HTTP ステータスに変換する。
 var (
 	ErrInvalidLimit    = errors.New("invalid limit")
 	ErrLangRequired    = errors.New("lang is required")
 	ErrUnsupportedLang = errors.New("unsupported lang")
 )
 
-// Interactor は公開 API の use case 層。port.PublicNewsQuerier のみに依存する。
+// Interactor は公開 API の usecase。port.PublicNewsQuerier のみに依存する。
 type Interactor struct {
 	querier port.PublicNewsQuerier
 }
@@ -35,7 +33,6 @@ func New(querier port.PublicNewsQuerier) *Interactor {
 }
 
 // List は指定言語で公開中記事の一覧を limit 件返す。
-// repo はドメイン DTO を返すため、ここで API 契約 (apinews.NewsListItem) に射影する。
 func (uc *Interactor) List(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error) {
 	if err := validateLang(lang); err != nil {
 		return nil, err
@@ -63,9 +60,7 @@ func (uc *Interactor) List(ctx context.Context, lang string, limit int) ([]apine
 	return items, nil
 }
 
-// GetDetail は指定言語で公開中記事の詳細を返す。
-// 非存在 / 非公開 / 該当 lang 翻訳なしは port.ErrNotFound が bubble する。
-// 取得した domain DTO は API 契約 (apinews.NewsDetail) に射影してから返す。
+// GetDetail は指定言語で公開中記事の詳細を返す。非存在 / 非公開 / 該当 lang 翻訳なしは port.ErrNotFound が bubble する。
 func (uc *Interactor) GetDetail(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error) {
 	if err := validateLang(lang); err != nil {
 		return nil, err
@@ -87,11 +82,8 @@ func (uc *Interactor) GetDetail(ctx context.Context, articleID string, lang stri
 	}, nil
 }
 
-// validateLang は lang を repo に渡す前に弾くことで「不正入力 (400)」と「該当データなし (404)」を区別するためにある。
-// lang は repo の SQL の JOIN 条件 (t.lang = $1) にそのまま渡るため、未対応値が来てもクエリ自体は成功し
-// 「結果が空」という形になる。それを repo まで通すと ErrNotFound と区別できなくなるため、
-// usecase 層で先に専用エラーを返す。
-// 未指定と対応外でエラーを分けてあるのは、handler / Gateway 側でメッセージやログを書き分けられる粒度を残すため。
+// validateLang は lang を repo に渡す前に弾き「不正入力 (400)」と「該当データなし (404)」を区別する。
+// 未指定と対応外で別エラーにし、handler / Gateway 側のメッセージ書き分けを許す。
 func validateLang(lang string) error {
 	if lang == "" {
 		return ErrLangRequired

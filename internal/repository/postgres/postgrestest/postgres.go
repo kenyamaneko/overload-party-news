@@ -1,8 +1,5 @@
 // Package postgrestest は DB を用いるテスト全般のヘルパを提供する。
-//
-// postgres:16-alpine の Testcontainers を起動して実 PostgreSQL に対してテストを
-// 実行する。コンテナはパッケージ単位で 1 回だけ起動し (RunMain)、テスト関数間の
-// 状態リセットは Truncate で行う。
+// Testcontainers でコンテナを 1 回起動し (RunMain)、テスト関数間の状態リセットは Truncate で行う。
 package postgrestest
 
 import (
@@ -87,7 +84,7 @@ func (p *Postgres) Close(ctx context.Context) error {
 }
 
 // Truncate は news スキーマ配下の全 BASE TABLE を動的に TRUNCATE する。
-// テーブル追加時に本ヘルパを更新する必要をなくすため、information_schema で列挙する。
+// テーブル追加時にヘルパ更新を強いられないよう、information_schema で列挙する。
 func (p *Postgres) Truncate(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()

@@ -1,5 +1,4 @@
 // Package rest は gateway 向け内部 REST API の delivery 層。
-// usecase 層のセンチネルエラーを HTTP ステータスに変換する責務を持つ。
 package rest
 
 import (
@@ -12,7 +11,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
 )
 
-// errorStatus はusecase 層のエラーを HTTP ステータスにマップする。
+// errorStatus は usecase 層のエラーを HTTP ステータスにマップする。
 func errorStatus(err error) int {
 	switch {
 	case errors.Is(err, port.ErrNotFound):

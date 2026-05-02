@@ -1,5 +1,4 @@
-// Package subscriber は Pub/Sub 購読の delivery 層。
-// adapter/pubsub から受け取った生バイト列を deserialize し、usecase 層に委譲する。
+// Package subscriber は Pub/Sub 購読の delivery 層。生バイト列を deserialize して usecase に委譲する。
 package subscriber
 
 import (
@@ -14,7 +13,6 @@ import (
 )
 
 // ArticleCollectedHandler は news-article-collected トピックの購読 handler。
-// service/ingest に委譲するだけで、ビジネスロジックは持たない。
 type ArticleCollectedHandler struct {
 	uc *ingest.Interactor
 }

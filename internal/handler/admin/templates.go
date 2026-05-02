@@ -12,8 +12,6 @@ import (
 var templatesFS embed.FS
 
 // templates は管理 UI が描画する 3 系統のテンプレートセット。
-// 各エントリは (layout + partial + 固有ページ) を一度にパースし、
-// ExecuteTemplate の呼び出しだけでページ全体を描画できる。
 type templates struct {
 	list *template.Template // layout + list + partials/row
 	edit *template.Template // layout + edit + partials/row
@@ -57,12 +55,9 @@ func parseTemplates() (*templates, error) {
 // templateFuncMap は Go テンプレートから呼べるヘルパー関数を集める。
 func templateFuncMap() template.FuncMap {
 	return template.FuncMap{
-		// statusNE は typed な domain.Status と生文字列を比較するためのヘルパー。
 		"statusNE": func(s domain.Status, target string) bool {
 			return string(s) != target
 		},
-		// findTranslation は指定 lang の翻訳を検索して返す。存在しなければ nil。
-		// 編集画面で各言語タブの既存内容を埋めるために使う。
 		"findTranslation": func(translations []domain.Translation, lang string) *domain.Translation {
 			for i := range translations {
 				if translations[i].Lang == lang {

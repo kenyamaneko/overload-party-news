@@ -1,6 +1,4 @@
-// Package postgres は port で定義されたリポジトリインタフェースの PostgreSQL 実装を提供する。
-// pgxpool を共有し、pure data access 層として振る舞う (ビジネスロジックを持たない)。
-// API 契約 (apinews) には依存せず、入出力は internal/domain の型で表現する。
+// Package postgres は port で定義されたリポジトリインタフェースの PostgreSQL 実装。
 package postgres
 
 import (
@@ -17,15 +15,12 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 )
 
-// PostgreSQL SQLSTATE.
-//   - foreign_key_violation: 親行が無いまま子を INSERT した場合に発生。
-//   - check_violation:       CHECK 制約に違反した値 (例: 未対応 lang) を書き込もうとした場合に発生。
+// PostgreSQL SQLSTATE。
 const (
 	pgCodeForeignKeyViolation = "23503"
 	pgCodeCheckViolation      = "23514"
 )
 
-// compile-time assertion: NewsRepository が port の全インタフェースを満たす。
 var (
 	_ port.PublicNewsQuerier = (*NewsRepository)(nil)
 	_ port.AdminNewsQuerier  = (*NewsRepository)(nil)
@@ -60,7 +55,7 @@ func (r *NewsRepository) InsertArticle(ctx context.Context, article domain.Artic
 }
 
 // InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
-// 親記事が存在しない状態で呼ぶと FK 違反でエラーになる (呼び出し側で順序保証)。
+// 親記事不在の状態で呼ぶと FK 違反でエラー (呼び出し側で順序保証)。
 // CHECK 制約違反 (未対応 lang) は ErrInvalidPersistedValue に変換する。
 func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
 	_, err := r.pool.Exec(ctx,
@@ -80,9 +75,7 @@ func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string
 	return nil
 }
 
-// ListPublished は公開可能かつ指定 lang の翻訳がある記事を
-// published_at DESC NULLS LAST, article_id DESC で limit 件返す。
-// WHERE 述語は domain.DeriveStatus の StatusPublished 条件と 1:1 対応。
+// ListPublished は公開可能かつ指定 lang の翻訳がある記事を published_at DESC, article_id DESC で limit 件返す。
 func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit int) ([]domain.PublishedArticleSummary, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT a.article_id, a.source, t.title, t.summary, a.tags, a.source_published_at, a.published_at
@@ -117,8 +110,7 @@ func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit i
 }
 
 // GetPublishedByID は公開可能 + 指定 lang の翻訳がある単一記事の詳細 (body / source_url 含む) を返す。
-// 一覧用の ListPublished と違い body を含むため、詳細画面用のクエリとして分離している。
-// 非存在/非公開/翻訳なしは ErrNotFound。
+// 非存在 / 非公開 / 翻訳なしは ErrNotFound。
 func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string, lang string) (*domain.PublishedArticleDetail, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT a.article_id, a.source, t.title, t.summary, t.body, a.tags,
@@ -143,8 +135,7 @@ func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string,
 	return &d, nil
 }
 
-// ListArticles は記事を ingested_at DESC で limit 件返す。
-// status フィルタは行わない (status 概念を持たないため、絞り込みは usecase 層の責務)。
+// ListArticles は記事を ingested_at DESC で limit 件返す。フィルタは行わない。
 func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]domain.Article, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT article_id, source, source_url, tags,
@@ -192,8 +183,7 @@ func (r *NewsRepository) GetArticleByID(ctx context.Context, articleID string) (
 	return article, nil
 }
 
-// ListTranslationsByArticleIDs は指定 article_id 群の翻訳行を 1 クエリで返す。
-// グループ化は行わない (呼び出し側で必要なら article_id でまとめる)。
+// ListTranslationsByArticleIDs は指定 article_id 群の翻訳行を 1 クエリで返す。グループ化は呼び出し側で行う。
 func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.Translation, error) {
 	if len(articleIDs) == 0 {
 		return nil, nil
@@ -226,7 +216,7 @@ func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, artic
 	return translations, nil
 }
 
-// Publish は承認遷移 (FEATURE_SPEC)。非存在なら ErrNotFound。
+// Publish は承認遷移 (published_at = reviewed_at = now、reviewer 更新)。非存在なら ErrNotFound。
 func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
@@ -237,7 +227,7 @@ func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer
 		articleID, now, reviewer)
 }
 
-// Reject は却下遷移 (FEATURE_SPEC)。非存在なら ErrNotFound。
+// Reject は却下遷移 (reviewed_at と reviewer のみ更新、published_at は保持)。非存在なら ErrNotFound。
 func (r *NewsRepository) Reject(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
@@ -247,8 +237,8 @@ func (r *NewsRepository) Reject(ctx context.Context, articleID string, reviewer 
 		articleID, now, reviewer)
 }
 
-// UpsertTranslation は翻訳行を追加 / 更新する。親記事が存在しない場合は FK 違反で ErrNotFound を返す。
-// news_articles には一切触れない (翻訳編集はレビュー判断と区別するため)。
+// UpsertTranslation は翻訳行を追加 / 更新する。news_articles には触れない。
+// 親記事不在は FK 違反 → ErrNotFound、CHECK 違反 → ErrInvalidPersistedValue に変換。
 func (r *NewsRepository) UpsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO news.news_article_translations

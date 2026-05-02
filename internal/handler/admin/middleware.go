@@ -1,5 +1,4 @@
 // Package admin は運用者向け管理 UI (HTMX + html/template) の delivery 層。
-// 認証は IAP に委譲し、news コード内では X-Goog-Authenticated-User-Email ヘッダだけを信頼する。
 package admin
 
 import (
@@ -20,8 +19,7 @@ const iapEmailHeader = "X-Goog-Authenticated-User-Email"
 // 本番で誤って使われないよう config.Env で分岐する。
 const localReviewerFallback = "local-dev@example.com"
 
-// reviewerContextKey は context に reviewer を埋めるためのキー。
-// 型を独立させて誤衝突を防ぐ。
+// reviewerContextKey は context に reviewer を埋めるためのキーの型。
 type reviewerContextKey struct{}
 
 // ErrMissingIAPHeader は IAP ヘッダが欠けているときに返す。handler は 401 にマップする。
@@ -47,14 +45,13 @@ func AuthMiddleware(env config.Env) gin.HandlerFunc {
 	}
 }
 
-// reviewerKey は gin.Context.Set/Get に使う文字列キー。
-// 型ベースのキーを gin は直接扱えないため、パッケージ内で stable な文字列にする。
+// reviewerKey は gin.Context.Set/Get に使う stable な文字列キー。
 func reviewerKey() string {
 	return "admin.reviewer"
 }
 
 // Reviewer は IAP 由来の運用者 email を取り出す。
-// middleware 未適用で呼ばれると空文字列を返すため、handler 側で空チェックはしない前提 (middleware チェーンの契約)。
+// middleware 未適用で呼ばれると空文字列を返す (handler 側で空チェックはしない前提)。
 func Reviewer(c *gin.Context) string {
 	v, ok := c.Get(reviewerKey())
 	if !ok {
@@ -68,8 +65,7 @@ func Reviewer(c *gin.Context) string {
 }
 
 // extractIAPEmail は IAP ヘッダ値から email 部分を取り出す。
-// 想定フォーマット: "<provider>:<email>" (例: "accounts.google.com:alice@example.com")。
-// プレフィックス無し (":" が無い) の値も許容し、そのまま email として扱う (テスト容易性のため)。
+// 想定: "<provider>:<email>"。プレフィックスなしの値もそのまま email として扱う (テスト容易性のため)。
 func extractIAPEmail(raw string) (string, error) {
 	if raw == "" {
 		return "", ErrMissingIAPHeader

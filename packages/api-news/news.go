@@ -41,8 +41,7 @@ type EventTranslation struct {
 }
 
 // ArticleCollectedEvent は news-article-collected トピックのペイロード。
-// newsfeed Cloud Run Job が publish、news サービスが subscribe する。
-// MVP では Translations は ja 1 件のみだが、将来 newsfeed が多言語を生成すれば要素が増えるだけで済む設計。
+// MVP では Translations は ja 1 件のみ (将来 newsfeed が多言語生成する場合は要素が増える)。
 type ArticleCollectedEvent struct {
 	ArticleID         string             `json:"article_id"`
 	Source            string             `json:"source"`
@@ -53,6 +52,5 @@ type ArticleCollectedEvent struct {
 }
 
 // TopicArticleCollected は Pub/Sub トピック名。
-// 本来は overload-party-common/pubsub-events で管理するべきだが、現時点で未定義のため
-// news リポジトリ内で暫定的に所有する。common への移管は後続タスク。
+// 暫定的に news が所有する (将来 overload-party-common/pubsub-events に移管)。
 const TopicArticleCollected = "news-article-collected"
