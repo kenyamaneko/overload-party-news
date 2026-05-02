@@ -33,10 +33,10 @@ type AdminNewsQuerier interface {
 	ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.Translation, error)
 }
 
-// NewsIngester は Pub/Sub subscriber が記事と翻訳を永続化するための write 操作。
+// NewsIngestWriter は Pub/Sub subscriber が記事と翻訳を永続化するための write 操作。
 // 記事と翻訳の挿入は独立した冪等操作として定義し、tx はアダプタ側でも張らない。
 // 「記事だけ入って翻訳なし」の中間状態は管理 UI の [ja 未作成] で扱える設計 (FEATURE_SPEC)。
-type NewsIngester interface {
+type NewsIngestWriter interface {
 	// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
 	InsertArticle(ctx context.Context, article domain.Article) (inserted bool, err error)
 	// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
@@ -44,9 +44,9 @@ type NewsIngester interface {
 	InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error
 }
 
-// NewsReviewer は校閲ユースケース (承認・却下・翻訳 upsert) の write 操作。
+// NewsReviewWriter は校閲ユースケース (承認・却下・翻訳 upsert) の write 操作。
 // 各操作のカラム更新仕様は FEATURE_SPEC を参照。
-type NewsReviewer interface {
+type NewsReviewWriter interface {
 	// Publish は published 状態への遷移。再承認 (既に published) でも冪等。
 	// 非存在記事なら ErrNotFound。
 	Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error

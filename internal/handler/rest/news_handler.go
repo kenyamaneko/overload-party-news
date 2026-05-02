@@ -12,12 +12,12 @@ import (
 
 // NewsHandler は gateway 経由で呼ばれる公開配信 API のエントリポイント。
 type NewsHandler struct {
-	svc *news.Service
+	uc *news.Interactor
 }
 
 // NewNewsHandler は NewsHandler を生成する。
-func NewNewsHandler(svc *news.Service) *NewsHandler {
-	return &NewsHandler{svc: svc}
+func NewNewsHandler(uc *news.Interactor) *NewsHandler {
+	return &NewsHandler{uc: uc}
 }
 
 // List は GET /internal/v1/news。lang (必須) と limit (必須) を解釈し、公開中記事の一覧を返す。
@@ -30,7 +30,7 @@ func (h *NewsHandler) List(c *gin.Context) {
 		return
 	}
 
-	items, err := h.svc.List(c.Request.Context(), lang, limit)
+	items, err := h.uc.List(c.Request.Context(), lang, limit)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -46,7 +46,7 @@ func (h *NewsHandler) List(c *gin.Context) {
 func (h *NewsHandler) GetDetail(c *gin.Context) {
 	articleID := c.Param("articleId")
 	lang := c.Query("lang")
-	detail, err := h.svc.GetDetail(c.Request.Context(), articleID, lang)
+	detail, err := h.uc.GetDetail(c.Request.Context(), articleID, lang)
 	if err != nil {
 		respondError(c, err)
 		return

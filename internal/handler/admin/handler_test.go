@@ -25,8 +25,8 @@ func newAdminServer(t *testing.T, repo *port.MockNewsRepo) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	svc := review.New(repo, repo, func() time.Time { return time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC) })
-	h, err := admin.NewHandler(svc)
+	uc := review.New(repo, repo, func() time.Time { return time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC) })
+	h, err := admin.NewHandler(uc)
 	require.NoError(t, err)
 
 	r := gin.New()

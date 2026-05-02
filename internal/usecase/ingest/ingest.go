@@ -17,14 +17,14 @@ import (
 // subscriber handler はこれを deterministic error として ACK する (再送しても結果が変わらない)。
 var ErrInvalidEventPayload = errors.New("invalid event payload")
 
-// Service は Pub/Sub event 1 件を受け取り DB 行 (記事 + ja 翻訳) に変換・永続化する。
-type Service struct {
-	ingester port.NewsIngester
+// Interactor は Pub/Sub event 1 件を受け取り DB 行 (記事 + ja 翻訳) に変換・永続化する。
+type Interactor struct {
+	writer port.NewsIngestWriter
 }
 
-// New は Service を生成する。
-func New(ingester port.NewsIngester) *Service {
-	return &Service{ingester: ingester}
+// New は Interactor を生成する。
+func New(writer port.NewsIngestWriter) *Interactor {
+	return &Interactor{writer: writer}
 }
 
 // Insert はイベントを変換して記事と ja 翻訳を INSERT する。
@@ -33,7 +33,7 @@ func New(ingester port.NewsIngester) *Service {
 //
 // 戻り値 inserted は「記事行が新規に入ったか」を表す (翻訳の有無は含めない)。
 // 必須フィールド欠落・ja 以外の lang・translations 不正は ErrInvalidEventPayload を返す。
-func (s *Service) Insert(ctx context.Context, event apinews.ArticleCollectedEvent) (inserted bool, err error) {
+func (uc *Interactor) Insert(ctx context.Context, event apinews.ArticleCollectedEvent) (inserted bool, err error) {
 	if err := validateEvent(event); err != nil {
 		return false, err
 	}
@@ -45,13 +45,13 @@ func (s *Service) Insert(ctx context.Context, event apinews.ArticleCollectedEven
 		Tags:              event.Tags,
 		SourcePublishedAt: event.SourcePublishedAt,
 	}
-	inserted, err = s.ingester.InsertArticle(ctx, article)
+	inserted, err = uc.writer.InsertArticle(ctx, article)
 	if err != nil {
 		return false, err
 	}
 
 	t := event.Translations[0]
-	if err := s.ingester.InsertTranslation(ctx, event.ArticleID, t.Lang, t.Title, t.Summary, t.Body); err != nil {
+	if err := uc.writer.InsertTranslation(ctx, event.ArticleID, t.Lang, t.Title, t.Summary, t.Body); err != nil {
 		return false, err
 	}
 	return inserted, nil

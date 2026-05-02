@@ -35,12 +35,12 @@ func TestList(t *testing.T) {
 	}
 
 	cases := []struct {
-		name        string
-		query       string
-		repoReturn  []domain.PublishedArticleSummary
-		wantStatus  int
+		name         string
+		query        string
+		repoReturn   []domain.PublishedArticleSummary
+		wantStatus   int
 		wantArticles []apinews.NewsListItem
-		wantLang    string
+		wantLang     string
 	}{
 		{
 			name:         "lang=ja + limit=10 で 200 (空配列)",

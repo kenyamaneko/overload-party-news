@@ -53,16 +53,16 @@ func run() error {
 
 	repo := postgres.NewNewsRepository(pool)
 
-	newsSvc := news.New(repo)
-	reviewSvc := review.New(repo, repo, time.Now)
-	ingestSvc := ingest.New(repo)
+	newsUC := news.New(repo)
+	reviewUC := review.New(repo, repo, time.Now)
+	ingestUC := ingest.New(repo)
 
-	newsH := rest.NewNewsHandler(newsSvc)
-	adminH, err := admin.NewHandler(reviewSvc)
+	newsH := rest.NewNewsHandler(newsUC)
+	adminH, err := admin.NewHandler(reviewUC)
 	if err != nil {
 		return fmt.Errorf("build admin handler: %w", err)
 	}
-	subscriberH := subscriber.NewArticleCollectedHandler(ingestSvc)
+	subscriberH := subscriber.NewArticleCollectedHandler(ingestUC)
 
 	stream, err := pubsub.NewStream(ctx, cfg.GoogleCloudProject, cfg.NewsArticleCollectedSubscription)
 	if err != nil {

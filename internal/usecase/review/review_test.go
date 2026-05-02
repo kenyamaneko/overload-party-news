@@ -15,7 +15,7 @@ import (
 
 var fixedNow = time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 
-func newService(repo *port.MockNewsRepo) *review.Service {
+func newInteractor(repo *port.MockNewsRepo) *review.Interactor {
 	return review.New(repo, repo, func() time.Time { return fixedNow })
 }
 
@@ -113,7 +113,7 @@ func TestUpsertTranslation(t *testing.T) {
 					return nil
 				},
 			}
-			err := newService(repo).UpsertTranslation(context.Background(), articleID, domain.LangJa, tc.title, tc.summary, tc.body)
+			err := newInteractor(repo).UpsertTranslation(context.Background(), articleID, domain.LangJa, tc.title, tc.summary, tc.body)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantCall, got)
@@ -150,7 +150,7 @@ func TestPublish(t *testing.T) {
 					return nil
 				},
 			}
-			err := newService(repo).Publish(context.Background(), articleID, tc.reviewer)
+			err := newInteractor(repo).Publish(context.Background(), articleID, tc.reviewer)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantCall, got)
@@ -187,7 +187,7 @@ func TestReject(t *testing.T) {
 					return nil
 				},
 			}
-			err := newService(repo).Reject(context.Background(), articleID, tc.reviewer)
+			err := newInteractor(repo).Reject(context.Background(), articleID, tc.reviewer)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantCall, got)
@@ -279,7 +279,7 @@ func TestList(t *testing.T) {
 				},
 			}
 
-			got, err := newService(repo).List(context.Background(), tc.filter, tc.limit)
+			got, err := newInteractor(repo).List(context.Background(), tc.filter, tc.limit)
 			assert.ErrorIs(t, err, tc.wantErr)
 
 			var gotIDs []string
@@ -336,7 +336,7 @@ func TestGet(t *testing.T) {
 				},
 			}
 
-			got, err := newService(repo).Get(context.Background(), "01")
+			got, err := newInteractor(repo).Get(context.Background(), "01")
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.want, got)
 			assert.Equal(t, tc.wantTransCalled, transCalled)

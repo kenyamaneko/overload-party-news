@@ -16,12 +16,12 @@ import (
 // ArticleCollectedHandler は news-article-collected トピックの購読 handler。
 // service/ingest に委譲するだけで、ビジネスロジックは持たない。
 type ArticleCollectedHandler struct {
-	svc *ingest.Service
+	uc *ingest.Interactor
 }
 
 // NewArticleCollectedHandler は Handler を生成する。
-func NewArticleCollectedHandler(svc *ingest.Service) *ArticleCollectedHandler {
-	return &ArticleCollectedHandler{svc: svc}
+func NewArticleCollectedHandler(uc *ingest.Interactor) *ArticleCollectedHandler {
+	return &ArticleCollectedHandler{uc: uc}
 }
 
 // Handle は 1 メッセージの処理 entrypoint。adapter から MessageHandler として登録する。
@@ -36,7 +36,7 @@ func (h *ArticleCollectedHandler) Handle(ctx context.Context, data []byte) error
 		return nil
 	}
 
-	inserted, err := h.svc.Insert(ctx, event)
+	inserted, err := h.uc.Insert(ctx, event)
 	if err != nil {
 		if errors.Is(err, ingest.ErrInvalidEventPayload) {
 			slog.WarnContext(ctx, "article-collected: invalid payload, acking", "error", err, "article_id", event.ArticleID)

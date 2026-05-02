@@ -24,19 +24,19 @@ var (
 	ErrUnsupportedLang = errors.New("unsupported lang")
 )
 
-// Service は公開 API の use case 層。port.PublicNewsQuerier のみに依存する。
-type Service struct {
+// Interactor は公開 API の use case 層。port.PublicNewsQuerier のみに依存する。
+type Interactor struct {
 	querier port.PublicNewsQuerier
 }
 
-// New は Service を生成する。
-func New(querier port.PublicNewsQuerier) *Service {
-	return &Service{querier: querier}
+// New は Interactor を生成する。
+func New(querier port.PublicNewsQuerier) *Interactor {
+	return &Interactor{querier: querier}
 }
 
 // List は指定言語で公開中記事の一覧を limit 件返す。
 // repo はドメイン DTO を返すため、ここで API 契約 (apinews.NewsListItem) に射影する。
-func (s *Service) List(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error) {
+func (uc *Interactor) List(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error) {
 	if err := validateLang(lang); err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (s *Service) List(ctx context.Context, lang string, limit int) ([]apinews.N
 		return nil, fmt.Errorf("%w: limit=%d must be in (0, %d]",
 			ErrInvalidLimit, limit, ListLimitMax)
 	}
-	rows, err := s.querier.ListPublished(ctx, lang, limit)
+	rows, err := uc.querier.ListPublished(ctx, lang, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -66,11 +66,11 @@ func (s *Service) List(ctx context.Context, lang string, limit int) ([]apinews.N
 // GetDetail は指定言語で公開中記事の詳細を返す。
 // 非存在 / 非公開 / 該当 lang 翻訳なしは port.ErrNotFound が bubble する。
 // 取得した domain DTO は API 契約 (apinews.NewsDetail) に射影してから返す。
-func (s *Service) GetDetail(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error) {
+func (uc *Interactor) GetDetail(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error) {
 	if err := validateLang(lang); err != nil {
 		return nil, err
 	}
-	d, err := s.querier.GetPublishedByID(ctx, articleID, lang)
+	d, err := uc.querier.GetPublishedByID(ctx, articleID, lang)
 	if err != nil {
 		return nil, err
 	}

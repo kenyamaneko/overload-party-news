@@ -23,17 +23,17 @@ type adminListItem struct {
 
 // Handler は管理 UI のすべての HTTP エンドポイントを提供する。
 type Handler struct {
-	svc *review.Service
+	uc  *review.Interactor
 	tpl *templates
 }
 
 // NewHandler は依存を受け取り Handler を生成する。テンプレート初期化もここで一度だけ行う。
-func NewHandler(svc *review.Service) (*Handler, error) {
+func NewHandler(uc *review.Interactor) (*Handler, error) {
 	tpl, err := parseTemplates()
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{svc: svc, tpl: tpl}, nil
+	return &Handler{uc: uc, tpl: tpl}, nil
 }
 
 // List は GET /admin/articles。status フィルタ付きの一覧ページを返す。
@@ -50,7 +50,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	articles, err := h.svc.List(c.Request.Context(), statuses, limit)
+	articles, err := h.uc.List(c.Request.Context(), statuses, limit)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -73,7 +73,7 @@ func (h *Handler) List(c *gin.Context) {
 // GetEdit は GET /admin/articles/:articleId。編集フォーム (ja/en タブ付き) のページを返す。
 func (h *Handler) GetEdit(c *gin.Context) {
 	articleID := c.Param("articleId")
-	aw, err := h.svc.Get(c.Request.Context(), articleID)
+	aw, err := h.uc.Get(c.Request.Context(), articleID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -97,7 +97,7 @@ func (h *Handler) UpsertTranslation(c *gin.Context) {
 	summary := c.PostForm("summary")
 	body := c.PostForm("body")
 
-	if err := h.svc.UpsertTranslation(c.Request.Context(), articleID, lang, title, summary, body); err != nil {
+	if err := h.uc.UpsertTranslation(c.Request.Context(), articleID, lang, title, summary, body); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -107,7 +107,7 @@ func (h *Handler) UpsertTranslation(c *gin.Context) {
 // Publish は POST /admin/articles/:articleId/publish。
 func (h *Handler) Publish(c *gin.Context) {
 	articleID := c.Param("articleId")
-	if err := h.svc.Publish(c.Request.Context(), articleID, Reviewer(c)); err != nil {
+	if err := h.uc.Publish(c.Request.Context(), articleID, Reviewer(c)); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -117,7 +117,7 @@ func (h *Handler) Publish(c *gin.Context) {
 // Reject は POST /admin/articles/:articleId/reject。
 func (h *Handler) Reject(c *gin.Context) {
 	articleID := c.Param("articleId")
-	if err := h.svc.Reject(c.Request.Context(), articleID, Reviewer(c)); err != nil {
+	if err := h.uc.Reject(c.Request.Context(), articleID, Reviewer(c)); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -128,7 +128,7 @@ func (h *Handler) Reject(c *gin.Context) {
 // hx-target が #row-{articleId} のときだけ行フラグメントを返し、
 // それ以外は HX-Redirect または 303 でリストへ戻す (edit ページからの呼び出し等)。
 func (h *Handler) respondUpdatedRow(c *gin.Context, articleID string) {
-	aw, err := h.svc.Get(c.Request.Context(), articleID)
+	aw, err := h.uc.Get(c.Request.Context(), articleID)
 	if err != nil {
 		respondError(c, err)
 		return

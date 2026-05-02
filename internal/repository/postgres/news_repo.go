@@ -29,8 +29,8 @@ const (
 var (
 	_ port.PublicNewsQuerier = (*NewsRepository)(nil)
 	_ port.AdminNewsQuerier  = (*NewsRepository)(nil)
-	_ port.NewsIngester      = (*NewsRepository)(nil)
-	_ port.NewsReviewer      = (*NewsRepository)(nil)
+	_ port.NewsIngestWriter  = (*NewsRepository)(nil)
+	_ port.NewsReviewWriter  = (*NewsRepository)(nil)
 )
 
 // NewsRepository は news スキーマ (news_articles + news_article_translations) への CRUD を提供する。

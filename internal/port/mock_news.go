@@ -25,8 +25,8 @@ type MockNewsRepo struct {
 var (
 	_ PublicNewsQuerier = (*MockNewsRepo)(nil)
 	_ AdminNewsQuerier  = (*MockNewsRepo)(nil)
-	_ NewsIngester      = (*MockNewsRepo)(nil)
-	_ NewsReviewer      = (*MockNewsRepo)(nil)
+	_ NewsIngestWriter  = (*MockNewsRepo)(nil)
+	_ NewsReviewWriter  = (*MockNewsRepo)(nil)
 )
 
 func (m *MockNewsRepo) ListPublished(ctx context.Context, lang string, limit int) ([]domain.PublishedArticleSummary, error) {
