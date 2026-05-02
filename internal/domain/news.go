@@ -21,7 +21,7 @@ var Statuses = []Status{StatusPending, StatusPublished, StatusRejected}
 
 // DeriveStatus は記事の reviewed_at / published_at から status を導出する。
 // 校閲状態の SSoT。repo の WHERE 述語と 1:1 で対応する。
-// 状態遷移と各カラム更新の仕様は FEATURE_SPEC §2.5 / §6 を参照。
+// 状態遷移と各カラム更新の仕様は FEATURE_SPEC を参照。
 func DeriveStatus(a Article) Status {
 	if a.ReviewedAt == nil {
 		return StatusPending

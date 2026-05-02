@@ -12,13 +12,13 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 )
 
-// FEATURE_SPEC.md §6.4 で定める翻訳バリデーション。
+// FEATURE_SPEC.md で定める翻訳バリデーション。
 const (
 	TitleMaxLen   = 500
 	SummaryMaxLen = 2000
 )
 
-// AdminListLimitMax は管理 UI 一覧 limit の上限 (FEATURE_SPEC.md §7.1)。
+// AdminListLimitMax は管理 UI 一覧 limit の上限 (FEATURE_SPEC.md)。
 // 過大要求による I/O 圧迫を防ぐ安全弁。下限はゼロ以下を弾くだけで十分なため定数化していない。
 const AdminListLimitMax = 200
 
@@ -110,7 +110,7 @@ func groupTranslationsByArticleID(translations []domain.Translation) map[string]
 	return grouped
 }
 
-// Publish は承認 (FEATURE_SPEC §6)。
+// Publish は承認 (FEATURE_SPEC)。
 // 既に published でも冪等 (published_at は毎回更新され、一覧で最新扱いになる)。
 func (s *Service) Publish(ctx context.Context, articleID string, reviewer string) error {
 	if reviewer == "" {
@@ -119,7 +119,7 @@ func (s *Service) Publish(ctx context.Context, articleID string, reviewer string
 	return s.reviewer.Publish(ctx, articleID, reviewer, s.now())
 }
 
-// Reject は却下 (FEATURE_SPEC §6)。
+// Reject は却下 (FEATURE_SPEC)。
 func (s *Service) Reject(ctx context.Context, articleID string, reviewer string) error {
 	if reviewer == "" {
 		return fmt.Errorf("%w: reviewer is required", ErrInvalidField)
@@ -128,7 +128,7 @@ func (s *Service) Reject(ctx context.Context, articleID string, reviewer string)
 }
 
 // UpsertTranslation は指定言語の翻訳を追加 / 更新する。
-// 長さバリデーション (FEATURE_SPEC §6.4) をここで強制する。
+// 長さバリデーション (FEATURE_SPEC) をここで強制する。
 // lang の許容値は DB 側の CHECK 制約が SSoT で、未対応値は port.ErrInvalidPersistedValue として bubble する。
 // status / reviewer は変更しない (翻訳編集はレビュー判断と区別する)。
 func (s *Service) UpsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {

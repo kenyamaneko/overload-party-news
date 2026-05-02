@@ -226,7 +226,7 @@ func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, artic
 	return translations, nil
 }
 
-// Publish は承認遷移 (FEATURE_SPEC §6)。非存在なら ErrNotFound。
+// Publish は承認遷移 (FEATURE_SPEC)。非存在なら ErrNotFound。
 func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
@@ -237,7 +237,7 @@ func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer
 		articleID, now, reviewer)
 }
 
-// Reject は却下遷移 (FEATURE_SPEC §6)。非存在なら ErrNotFound。
+// Reject は却下遷移 (FEATURE_SPEC)。非存在なら ErrNotFound。
 func (r *NewsRepository) Reject(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles

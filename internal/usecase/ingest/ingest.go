@@ -1,6 +1,6 @@
 // Package ingest は news-article-collected Pub/Sub イベントを自スキーマに永続化する use case。
 // 記事と ja 翻訳を独立した冪等操作として挿入する (tx なし)。
-// FEATURE_SPEC §3.1: MVP では newsfeed は ja 翻訳 1 件のみを送る。en 翻訳は管理 UI 経由で追加する。
+// FEATURE_SPEC: MVP では newsfeed は ja 翻訳 1 件のみを送る。en 翻訳は管理 UI 経由で追加する。
 package ingest
 
 import (
@@ -58,7 +58,7 @@ func (s *Service) Insert(ctx context.Context, event apinews.ArticleCollectedEven
 }
 
 // validateEvent は必須フィールドが揃い、translations が ja 1 件ちょうどであることを確認する。
-// FEATURE_SPEC §3.1: MVP では newsfeed は ja 翻訳 1 件のみを送る。
+// FEATURE_SPEC: MVP では newsfeed は ja 翻訳 1 件のみを送る。
 func validateEvent(e apinews.ArticleCollectedEvent) error {
 	if e.ArticleID == "" {
 		return fmt.Errorf("%w: article_id is empty", ErrInvalidEventPayload)

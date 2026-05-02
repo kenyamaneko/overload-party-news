@@ -13,7 +13,7 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// ListLimitMax は一覧 limit の上限 (FEATURE_SPEC.md §4)。
+// ListLimitMax は一覧 limit の上限 (FEATURE_SPEC.md)。
 // 過大要求による I/O 圧迫を防ぐ安全弁。下限はゼロ以下を弾くだけで十分なため定数化していない。
 const ListLimitMax = 100
 

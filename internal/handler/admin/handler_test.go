@@ -182,7 +182,7 @@ func TestList(t *testing.T) {
 			wantStatus:  http.StatusOK,
 			wantBodyHas: []string{"[ja 未作成]"},
 		},
-		// status に応じたボタン表示 (FEATURE_SPEC §6.1)
+		// status に応じたボタン表示 (FEATURE_SPEC)
 		{
 			name:       "pending は承認/却下ボタン両方",
 			query:      "?limit=50",
