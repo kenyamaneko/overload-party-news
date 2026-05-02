@@ -56,7 +56,7 @@ func (h *NewsHandler) GetDetail(c *gin.Context) {
 
 // parseLimit は limit クエリを int に変換する。
 // 未指定や非整数は ErrInvalidLimit を返す (デフォルト値へのフォールバックを行わない方針)。
-// 値の範囲バリデーションは service 層が行うため、ここでは整数変換のみ責任を持つ。
+// 値の範囲バリデーションは usecase 層が行うため、ここでは整数変換のみ責任を持つ。
 func parseLimit(raw string) (int, error) {
 	if raw == "" {
 		return 0, news.ErrInvalidLimit

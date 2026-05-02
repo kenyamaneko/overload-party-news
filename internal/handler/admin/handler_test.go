@@ -70,7 +70,7 @@ func sampleArticleWithJa(id string, status domain.Status) domain.ArticleWithTran
 }
 
 // stubList は ArticleWithTranslations 群を MockNewsRepo の 2 メソッド (記事 + 翻訳) に分解してセットする。
-// service 層が両者を取得して結合する契約に合わせるためのテスト用ヘルパー。
+// usecase 層が両者を取得して結合する契約に合わせるためのテスト用ヘルパー。
 // 翻訳の ArticleID は親記事の値で自動補完する (テスト記述を簡潔にするため)。
 func stubList(repo *port.MockNewsRepo, items []domain.ArticleWithTranslations) {
 	articles := make([]domain.Article, len(items))

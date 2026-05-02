@@ -1,5 +1,5 @@
 // Package subscriber は Pub/Sub 購読の delivery 層。
-// adapter/pubsub から受け取った生バイト列を deserialize し、service 層に委譲する。
+// adapter/pubsub から受け取った生バイト列を deserialize し、usecase 層に委譲する。
 package subscriber
 
 import (

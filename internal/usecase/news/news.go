@@ -90,7 +90,7 @@ func (s *Service) GetDetail(ctx context.Context, articleID string, lang string) 
 // validateLang は lang を repo に渡す前に弾くことで「不正入力 (400)」と「該当データなし (404)」を区別するためにある。
 // lang は repo の SQL の JOIN 条件 (t.lang = $1) にそのまま渡るため、未対応値が来てもクエリ自体は成功し
 // 「結果が空」という形になる。それを repo まで通すと ErrNotFound と区別できなくなるため、
-// service 層で先に専用エラーを返す。
+// usecase 層で先に専用エラーを返す。
 // 未指定と対応外でエラーを分けてあるのは、handler / Gateway 側でメッセージやログを書き分けられる粒度を残すため。
 func validateLang(lang string) error {
 	if lang == "" {

@@ -10,7 +10,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
-// errorStatus はサービス層のエラーを HTTP ステータスにマップする。
+// errorStatus はusecase 層のエラーを HTTP ステータスにマップする。
 func errorStatus(err error) int {
 	switch {
 	case errors.Is(err, port.ErrNotFound):

@@ -242,7 +242,7 @@ func parseStatusFilter(raws []string) ([]domain.Status, string, error) {
 
 // parseAdminLimit は ?limit= クエリを int に変換する。
 // 未指定や非整数は ErrInvalidField を返す (デフォルト値へのフォールバックを行わない方針)。
-// 値の範囲バリデーションは service 層が行う。
+// 値の範囲バリデーションは usecase 層が行う。
 func parseAdminLimit(raw string) (int, error) {
 	if raw == "" {
 		return 0, fmt.Errorf("%w: limit is required", review.ErrInvalidField)

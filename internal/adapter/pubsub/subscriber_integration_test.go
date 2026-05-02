@@ -123,7 +123,7 @@ func waitForArticle(t *testing.T, repo *postgres.NewsRepository, articleID strin
 }
 
 // loadArticleWithTranslations は repo の分離された I/O を結合し Status を導出する統合テスト用ヘルパー。
-// service 層を経由せず DB 状態を直接観測したいときに使う。
+// usecase 層を経由せず DB 状態を直接観測したいときに使う。
 func loadArticleWithTranslations(repo *postgres.NewsRepository, articleID string) (*domain.ArticleWithTranslations, error) {
 	ctx := context.Background()
 	article, err := repo.GetArticleByID(ctx, articleID)

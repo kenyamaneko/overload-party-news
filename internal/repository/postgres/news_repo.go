@@ -144,7 +144,7 @@ func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string,
 }
 
 // ListArticles は記事を ingested_at DESC で limit 件返す。
-// status フィルタは行わない (status 概念を持たないため、絞り込みは service 層の責務)。
+// status フィルタは行わない (status 概念を持たないため、絞り込みは usecase 層の責務)。
 func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]domain.Article, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT article_id, source, source_url, tags,

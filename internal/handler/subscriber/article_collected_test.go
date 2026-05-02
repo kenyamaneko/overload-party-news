@@ -74,7 +74,7 @@ func TestHandle(t *testing.T) {
 			wantArticleCallCount: 0,
 			wantTransCallCount:   0,
 		},
-		// 必須フィールド欠け: service でバリデーションされ ACK。
+		// 必須フィールド欠け: usecase でバリデーションされ ACK。
 		{
 			name: "translations 空は ACK",
 			payload: func() []byte {

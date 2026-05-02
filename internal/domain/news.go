@@ -35,7 +35,7 @@ func DeriveStatus(a Article) Status {
 }
 
 // 対応言語コード (MVP は ja / en のみ)。
-// 未知値はリクエスト時に service 層で弾く。
+// 未知値はリクエスト時に usecase 層で弾く。
 const (
 	LangJa = "ja"
 	LangEn = "en"
@@ -46,7 +46,7 @@ const (
 var SupportedLangs = []string{LangJa, LangEn}
 
 // Article は news_articles 行の言語非依存部分を表すドメインエンティティ。
-// API レスポンスに直接シリアライズせず、必要に応じて service 層が apinews.X に射影する。
+// API レスポンスに直接シリアライズせず、必要に応じて usecase 層が apinews.X に射影する。
 type Article struct {
 	ArticleID         string
 	Source            string
@@ -80,7 +80,7 @@ type ArticleWithTranslations struct {
 
 // PublishedArticleSummary は ListPublished が返す一覧 1 行分の DTO。
 // title / summary は指定 lang の翻訳由来。published_at は事前に published 条件で絞り込んでいるため非 nullable。
-// 公開 API レスポンス (apinews.NewsListItem) への射影は service 層が行う。
+// 公開 API レスポンス (apinews.NewsListItem) への射影は usecase 層が行う。
 type PublishedArticleSummary struct {
 	ArticleID         string
 	Source            string
@@ -93,7 +93,7 @@ type PublishedArticleSummary struct {
 
 // PublishedArticleDetail は GetPublishedByID が返す詳細 1 件分の DTO。
 // title / summary / body は指定 lang の翻訳由来。published_at は事前に published 条件で絞り込んでいるため非 nullable。
-// 公開 API レスポンス (apinews.NewsDetail) への射影は service 層が行う。
+// 公開 API レスポンス (apinews.NewsDetail) への射影は usecase 層が行う。
 type PublishedArticleDetail struct {
 	ArticleID         string
 	Source            string

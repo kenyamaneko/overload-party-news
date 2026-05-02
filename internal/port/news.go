@@ -9,7 +9,7 @@ import (
 
 // PublicNewsQuerier は公開 API (gateway → news) が必要とする read-only 操作。
 // 公開可能条件 (status = 'published' かつ指定 lang の翻訳が存在) を満たす記事のみを返す。
-// 返却型はドメイン DTO で、apinews への射影は service 層が行う。
+// 返却型はドメイン DTO で、apinews への射影は usecase 層が行う。
 type PublicNewsQuerier interface {
 	// ListPublished は published な記事を published_at DESC で最新 limit 件返す。
 	// 指定 lang の翻訳が無い記事は除外 (フォールバックしない)。
@@ -20,11 +20,11 @@ type PublicNewsQuerier interface {
 }
 
 // AdminNewsQuerier は管理 UI が必要とする read 操作。
-// 記事と翻訳の取得・status の絞り込みはすべて service 層の責務とし、
+// 記事と翻訳の取得・status の絞り込みはすべて usecase 層の責務とし、
 // repo は status 概念を一切知らない (純粋な永続層)。
 type AdminNewsQuerier interface {
 	// ListArticles は記事を ingested_at DESC で limit 件返す。フィルタは行わない。
-	// status による絞り込みは取得後に service 層で実施する契約。
+	// status による絞り込みは取得後に usecase 層で実施する契約。
 	ListArticles(ctx context.Context, limit int) ([]domain.Article, error)
 	// GetArticleByID は記事を返す。非存在なら ErrNotFound。
 	GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error)

@@ -1,5 +1,5 @@
 // Package review は管理 UI の校閲ユースケース (承認・却下・翻訳 upsert) と閲覧用 read 操作を実装する。
-// 公開 API (service/news) とは別サービスとし、依存する port も AdminNewsQuerier / NewsReviewer に限定する。
+// 公開 API (usecase/news) とは独立した usecase で、依存する port も AdminNewsQuerier / NewsReviewer に限定する。
 package review
 
 import (
@@ -37,10 +37,8 @@ func New(querier port.AdminNewsQuerier, reviewer port.NewsReviewer, now func() t
 // List は管理 UI 向けに status 集合フィルタ可能な記事一覧 (各記事の全翻訳を含む) を返す。
 // 「全件」を意図する場合は呼び出し側が domain.Statuses を渡す契約。
 //
-// 設計方針: status 解決は service 層の責務とし、repo には status 概念を持ち込まない。
-// 「最新 limit 件を取得 → status 導出 → 絞り込み」の順なので、結果は
-// 「最新 limit 件のうち指定 status のもの」になる (admin UI の用途として許容)。
-// 翻訳は status 絞り込み後の article_id に対してのみ取得し、article_id で結合する。
+// status 導出は usecase 層の責務 (repo は status 概念を持たない)。
+// 最新 limit 件を取ってから status で絞るため、結果は「最新 limit 件のうち指定 status のもの」になる。
 func (s *Service) List(ctx context.Context, statuses []domain.Status, limit int) ([]domain.ArticleWithTranslations, error) {
 	if limit <= 0 || limit > AdminListLimitMax {
 		return nil, fmt.Errorf("%w: limit=%d must be in (0, %d]",
@@ -74,7 +72,7 @@ func (s *Service) List(ctx context.Context, statuses []domain.Status, limit int)
 	if err != nil {
 		return nil, err
 	}
-	grouped := groupTranslationsByArticleID(translations)
+	grouped := translationsByArticleID(translations)
 	results := make([]domain.ArticleWithTranslations, len(filtered))
 	for i, a := range filtered {
 		results[i] = domain.ArticleWithTranslations{
@@ -102,7 +100,7 @@ func (s *Service) Get(ctx context.Context, articleID string) (*domain.ArticleWit
 	}, nil
 }
 
-func groupTranslationsByArticleID(translations []domain.Translation) map[string][]domain.Translation {
+func translationsByArticleID(translations []domain.Translation) map[string][]domain.Translation {
 	grouped := make(map[string][]domain.Translation)
 	for _, t := range translations {
 		grouped[t.ArticleID] = append(grouped[t.ArticleID], t)

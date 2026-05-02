@@ -1,5 +1,5 @@
 // Package pubsub は Cloud Pub/Sub subscription への adapter。
-// port / service 層が Pub/Sub のライブラリに直接依存しないよう、
+// port / usecase 層が Pub/Sub のライブラリに直接依存しないよう、
 // 「バイトを受けて handler に委譲する Stream」として抽象化する。
 package pubsub
 

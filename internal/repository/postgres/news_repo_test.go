@@ -44,7 +44,7 @@ func translationByLang(t *testing.T, aw *domain.ArticleWithTranslations, lang st
 }
 
 // fetchArticleWithTranslations は repo から記事 + 翻訳を取得して合成し、Status を導出するテストヘルパー。
-// repo は分離された I/O を提供するだけで、合成と Status 導出は本来 service 層の責務だが、
+// repo は分離された I/O を提供するだけで、合成と Status 導出は本来 usecase 層の責務だが、
 // 本ファイルでは便宜的にテスト内で組み立てる。
 func fetchArticleWithTranslations(t *testing.T, repo *postgres.NewsRepository, id string) (*domain.ArticleWithTranslations, error) {
 	t.Helper()
