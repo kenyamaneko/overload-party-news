@@ -30,8 +30,7 @@ func validEnv() map[string]string {
 	}
 }
 
-// 仕様 (CLAUDE.md): デフォルト値フォールバック禁止。必須変数欠落・未知値・同ポート等は即 fail する。
-func TestFromEnv_仕様_必須変数と値の妥当性(t *testing.T) {
+func TestFromEnv_Validation(t *testing.T) {
 	cases := []struct {
 		name    string
 		mutate  func(m map[string]string)
@@ -105,7 +104,6 @@ func TestFromEnv_仕様_必須変数と値の妥当性(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			m := validEnv()
 			tc.mutate(m)
@@ -113,15 +111,13 @@ func TestFromEnv_仕様_必須変数と値の妥当性(t *testing.T) {
 
 			cfg, err := config.FromEnv()
 
-			// ErrorAssertion を wantErr bool に対して一様に走らせる。
 			assertErrExpectation(t, err, tc.wantErr)
 			assert.Equal(t, map[bool]bool{true: true, false: false}[cfg == nil], tc.wantErr)
 		})
 	}
 }
 
-// 仕様: 正常な env から生成された Config はすべてのフィールドが env の値を反映する。
-func TestFromEnv_仕様_Configが全envを反映(t *testing.T) {
+func TestFromEnv_Mapping(t *testing.T) {
 	m := map[string]string{
 		"ENV":                                 "production",
 		"INTERNAL_PORT":                       "12345",

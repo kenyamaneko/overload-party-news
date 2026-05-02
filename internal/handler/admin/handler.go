@@ -10,13 +10,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/service/review"
-	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
 // adminListItem は一覧画面描画用に ArticleWithTranslations を展開したビューモデル。
 type adminListItem struct {
-	Article      apinews.Article
+	Article      domain.Article
 	DisplayTitle string // ja タイトル (無ければ空 → テンプレートでプレースホルダ表示)
 	LangsLabel   string // 存在する翻訳言語の表示 (例: "ja, en")
 }
@@ -83,7 +83,7 @@ func (h *Handler) GetEdit(c *gin.Context) {
 		"Reviewer":     Reviewer(c),
 		"Article":      aw.Article,
 		"Translations": aw.Translations,
-		"Langs":        apinews.SupportedLangs,
+		"Langs":        domain.SupportedLangs,
 	}
 	renderPage(c, h.tpl.edit, data)
 }
@@ -172,12 +172,12 @@ func renderPage(c *gin.Context, tpl *template.Template, data any) {
 
 // toAdminListItem は ArticleWithTranslations から一覧表示用のビューモデルを作る。
 // ja タイトルを抽出し、存在する翻訳言語のラベルを組み立てる。
-func toAdminListItem(aw apinews.ArticleWithTranslations) adminListItem {
+func toAdminListItem(aw domain.ArticleWithTranslations) adminListItem {
 	var displayTitle string
 	langs := make([]string, 0, len(aw.Translations))
 	for _, t := range aw.Translations {
 		langs = append(langs, t.Lang)
-		if t.Lang == apinews.LangJa {
+		if t.Lang == domain.LangJa {
 			displayTitle = t.Title
 		}
 	}
@@ -190,9 +190,9 @@ func toAdminListItem(aw apinews.ArticleWithTranslations) adminListItem {
 
 // headerTitle は編集画面の <title> に表示する文字列を決める。
 // ja 翻訳があればそのタイトル、無ければ article_id を使う。
-func headerTitle(aw *apinews.ArticleWithTranslations) string {
+func headerTitle(aw *domain.ArticleWithTranslations) string {
 	for _, t := range aw.Translations {
-		if t.Lang == apinews.LangJa {
+		if t.Lang == domain.LangJa {
 			return t.Title
 		}
 	}
@@ -200,29 +200,29 @@ func headerTitle(aw *apinews.ArticleWithTranslations) string {
 }
 
 // parseStatusFilter は status クエリ群を Status 集合フィルタに変換する。
-// 未指定 / 単一 "all" → apinews.Statuses (全 status 列挙)、既知値群 → 対応 Status 列、未知値混在 → ErrInvalidField。
+// 未指定 / 単一 "all" → domain.Statuses (全 status 列挙)、既知値群 → 対応 Status 列、未知値混在 → ErrInvalidField。
 // 重複は除去する。複数指定 (?status=pending&status=published) は IN 句相当として扱う。
 // 2 つ目の返り値はテンプレートで active タブをハイライトするための文字列
 // (単一指定なら値そのもの、複数指定ならカンマ結合、全件なら空)。
-func parseStatusFilter(raws []string) ([]apinews.Status, string, error) {
+func parseStatusFilter(raws []string) ([]domain.Status, string, error) {
 	if len(raws) == 0 {
-		return apinews.Statuses, "", nil
+		return domain.Statuses, "", nil
 	}
 	if len(raws) == 1 && (raws[0] == "" || raws[0] == "all") {
-		return apinews.Statuses, "", nil
+		return domain.Statuses, "", nil
 	}
 
-	seen := make(map[apinews.Status]struct{}, len(raws))
-	statuses := make([]apinews.Status, 0, len(raws))
+	seen := make(map[domain.Status]struct{}, len(raws))
+	statuses := make([]domain.Status, 0, len(raws))
 	for _, raw := range raws {
-		var s apinews.Status
+		var s domain.Status
 		switch raw {
-		case string(apinews.StatusPending):
-			s = apinews.StatusPending
-		case string(apinews.StatusPublished):
-			s = apinews.StatusPublished
-		case string(apinews.StatusRejected):
-			s = apinews.StatusRejected
+		case string(domain.StatusPending):
+			s = domain.StatusPending
+		case string(domain.StatusPublished):
+			s = domain.StatusPublished
+		case string(domain.StatusRejected):
+			s = domain.StatusRejected
 		default:
 			return nil, "", fmt.Errorf("%w: unknown status %q", review.ErrInvalidField, raw)
 		}

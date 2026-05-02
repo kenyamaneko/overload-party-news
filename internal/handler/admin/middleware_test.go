@@ -12,7 +12,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
 )
 
-func TestAuthMiddleware_production_IAP_ヘッダ要求(t *testing.T) {
+func TestAuthMiddleware_Production(t *testing.T) {
 	cases := []struct {
 		name         string
 		headers      map[string]string
@@ -46,7 +46,6 @@ func TestAuthMiddleware_production_IAP_ヘッダ要求(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			var seenReviewer string
@@ -70,7 +69,7 @@ func TestAuthMiddleware_production_IAP_ヘッダ要求(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_local_ヘッダ不要で固定値注入(t *testing.T) {
+func TestAuthMiddleware_Local(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	var seenReviewer string
 	r := gin.New()

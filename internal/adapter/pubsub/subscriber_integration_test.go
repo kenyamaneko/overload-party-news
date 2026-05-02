@@ -15,6 +15,7 @@ import (
 
 	newspubsub "github.com/kenyamaneko/overload-party-news/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-news/internal/adapter/pubsub/pubsubtest"
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres/postgrestest"
@@ -107,7 +108,7 @@ func setupPipeline(t *testing.T) *pipeline {
 
 // waitForArticle は DB 書き込みを polling で待つ。Pub/Sub 配送は非同期なので、
 // publish 後の「いつ DB に現れるか」をテスト時間内で収束させるための helper。
-func waitForArticle(t *testing.T, repo *postgres.NewsRepository, articleID string, timeout time.Duration) *apinews.ArticleWithTranslations {
+func waitForArticle(t *testing.T, repo *postgres.NewsRepository, articleID string, timeout time.Duration) *domain.ArticleWithTranslations {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -123,7 +124,7 @@ func waitForArticle(t *testing.T, repo *postgres.NewsRepository, articleID strin
 
 // loadArticleWithTranslations は repo の分離された I/O を結合し Status を導出する統合テスト用ヘルパー。
 // service 層を経由せず DB 状態を直接観測したいときに使う。
-func loadArticleWithTranslations(repo *postgres.NewsRepository, articleID string) (*apinews.ArticleWithTranslations, error) {
+func loadArticleWithTranslations(repo *postgres.NewsRepository, articleID string) (*domain.ArticleWithTranslations, error) {
 	ctx := context.Background()
 	article, err := repo.GetArticleByID(ctx, articleID)
 	if err != nil {
@@ -133,8 +134,8 @@ func loadArticleWithTranslations(repo *postgres.NewsRepository, articleID string
 	if err != nil {
 		return nil, err
 	}
-	article.Status = apinews.DeriveStatus(*article)
-	return &apinews.ArticleWithTranslations{Article: *article, Translations: translations}, nil
+	article.Status = domain.DeriveStatus(*article)
+	return &domain.ArticleWithTranslations{Article: *article, Translations: translations}, nil
 }
 
 func validEventPayload(t *testing.T, articleID string) []byte {
@@ -147,15 +148,14 @@ func validEventPayload(t *testing.T, articleID string) []byte {
 		Tags:              []string{"compute"},
 		SourcePublishedAt: &pub,
 		Translations: []apinews.EventTranslation{
-			{Lang: apinews.LangJa, Title: "タイトル", Summary: "要約", Body: "本文"},
+			{Lang: domain.LangJa, Title: "タイトル", Summary: "要約", Body: "本文"},
 		},
 	})
 	require.NoError(t, err)
 	return data
 }
 
-// 仕様: publish された正常 payload は記事 + ja 翻訳として DB に永続化される。
-func TestIngestE2E_仕様_正常系で記事と翻訳がDBに入る(t *testing.T) {
+func TestIngestE2E_HappyPath(t *testing.T) {
 	p := setupPipeline(t)
 
 	articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
@@ -163,14 +163,13 @@ func TestIngestE2E_仕様_正常系で記事と翻訳がDBに入る(t *testing.T
 
 	aw := waitForArticle(t, p.repo, articleID, 5*time.Second)
 	assert.Equal(t, articleID, aw.Article.ArticleID)
-	assert.Equal(t, apinews.StatusPending, aw.Article.Status)
+	assert.Equal(t, domain.StatusPending, aw.Article.Status)
 	require.Len(t, aw.Translations, 1)
-	assert.Equal(t, apinews.LangJa, aw.Translations[0].Lang)
+	assert.Equal(t, domain.LangJa, aw.Translations[0].Lang)
 	assert.Equal(t, "タイトル", aw.Translations[0].Title)
 }
 
-// 仕様 (FEATURE_SPEC §3.2): 同一メッセージが 2 回配送されても DB 行は重複しない。
-func TestIngestE2E_仕様_冪等性(t *testing.T) {
+func TestIngestE2E_Idempotency(t *testing.T) {
 	p := setupPipeline(t)
 
 	articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA2"
@@ -192,9 +191,7 @@ func TestIngestE2E_仕様_冪等性(t *testing.T) {
 		"重複 publish で既存翻訳の created_at は変わらない")
 }
 
-// 仕様 (FEATURE_SPEC §3.1): invalid payload は ACK されて DB に書かれない。
-// subscriber の Handle が nil を返すため emulator 側で再配送されないことも含意する。
-func TestIngestE2E_仕様_invalidPayloadはACKしてDBに書かれない(t *testing.T) {
+func TestIngestE2E_InvalidPayload(t *testing.T) {
 	p := setupPipeline(t)
 
 	// translations が ja 以外 → service のバリデーションで ErrInvalidEventPayload → ACK
@@ -204,7 +201,7 @@ func TestIngestE2E_仕様_invalidPayloadはACKしてDBに書かれない(t *test
 		Source:    "aws",
 		SourceURL: "https://aws.amazon.com/" + articleID,
 		Translations: []apinews.EventTranslation{
-			{Lang: apinews.LangEn, Title: "T", Summary: "S", Body: "B"},
+			{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"},
 		},
 	})
 	require.NoError(t, err)
@@ -216,8 +213,7 @@ func TestIngestE2E_仕様_invalidPayloadはACKしてDBに書かれない(t *test
 	assert.Error(t, err, "invalid payload は DB に永続化されないべき")
 }
 
-// 仕様: JSON として壊れた payload も ACK されて DB に書かれない。
-func TestIngestE2E_仕様_壊れたJSONはACKしてDBに書かれない(t *testing.T) {
+func TestIngestE2E_MalformedJSON(t *testing.T) {
 	p := setupPipeline(t)
 
 	sharedEmulator.Publish(t, p.topicID, []byte("{not-json"))

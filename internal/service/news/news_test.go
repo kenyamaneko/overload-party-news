@@ -4,97 +4,76 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/service/news"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// 仕様: List は lang が空なら ErrLangRequired、対応外なら ErrUnsupportedLang を返す。
-// lang 値の網羅は validateLang の専用テストに任せ、ここでは List が validateLang のエラーを正しく bubble するかだけ確認する。
-func TestList_仕様_lang不正のエラー種別(t *testing.T) {
-	cases := []struct {
-		name    string
-		lang    string
-		wantErr error
-	}{
-		{
-			name:    "未指定は ErrLangRequired",
-			lang:    "",
-			wantErr: news.ErrLangRequired,
-		},
-		{
-			name:    "対応外は ErrUnsupportedLang",
-			lang:    "fr",
-			wantErr: news.ErrUnsupportedLang,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &port.MockNewsRepo{
-				ListPublishedFn: func(_ context.Context, _ string, _ int) ([]apinews.NewsListItem, error) {
-					return nil, nil
-				},
-			}
-			_, err := news.New(repo).List(context.Background(), tc.lang, news.ListLimitMax)
-
-			assert.ErrorIs(t, err, tc.wantErr)
-		})
-	}
-}
-
-// 仕様: List は limit が (0, ListLimitMax] の範囲内なら指定件数を返し、範囲外なら ErrInvalidLimit を返す。
-func TestList_仕様_limitに応じた件数とエラー(t *testing.T) {
+func TestList(t *testing.T) {
 	cases := []struct {
 		name      string
+		lang      string
 		limit     int
 		wantErr   error
 		wantCount int
 	}{
 		{
-			name:      "1 (下限)",
+			name:      "lang=ja + limit=1 (下限) で 1 件",
+			lang:      domain.LangJa,
 			limit:     1,
-			wantErr:   nil,
 			wantCount: 1,
 		},
 		{
-			name:      "上限",
+			name:      "lang=ja + limit=上限 で上限件数",
+			lang:      domain.LangJa,
 			limit:     news.ListLimitMax,
-			wantErr:   nil,
 			wantCount: news.ListLimitMax,
 		},
 		{
-			name:      "0 はエラー",
-			limit:     0,
-			wantErr:   news.ErrInvalidLimit,
-			wantCount: 0,
+			name:    "lang 未指定は ErrLangRequired",
+			lang:    "",
+			limit:   news.ListLimitMax,
+			wantErr: news.ErrLangRequired,
 		},
 		{
-			name:      "負値はエラー",
-			limit:     -1,
-			wantErr:   news.ErrInvalidLimit,
-			wantCount: 0,
+			name:    "lang 対応外は ErrUnsupportedLang",
+			lang:    "fr",
+			limit:   news.ListLimitMax,
+			wantErr: news.ErrUnsupportedLang,
 		},
 		{
-			name:      "上限超過はエラー",
-			limit:     news.ListLimitMax + 1,
-			wantErr:   news.ErrInvalidLimit,
-			wantCount: 0,
+			name:    "limit=0 は ErrInvalidLimit",
+			lang:    domain.LangJa,
+			limit:   0,
+			wantErr: news.ErrInvalidLimit,
+		},
+		{
+			name:    "limit 負値は ErrInvalidLimit",
+			lang:    domain.LangJa,
+			limit:   -1,
+			wantErr: news.ErrInvalidLimit,
+		},
+		{
+			name:    "limit 上限超過は ErrInvalidLimit",
+			lang:    domain.LangJa,
+			limit:   news.ListLimitMax + 1,
+			wantErr: news.ErrInvalidLimit,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &port.MockNewsRepo{
-				ListPublishedFn: func(_ context.Context, _ string, limit int) ([]apinews.NewsListItem, error) {
-					items := make([]apinews.NewsListItem, limit)
-					return items, nil
+				ListPublishedFn: func(_ context.Context, _ string, limit int) ([]domain.PublishedArticleSummary, error) {
+					return make([]domain.PublishedArticleSummary, limit), nil
 				},
 			}
-			got, err := news.New(repo).List(context.Background(), apinews.LangJa, tc.limit)
+			got, err := news.New(repo).List(context.Background(), tc.lang, tc.limit)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Len(t, got, tc.wantCount)
@@ -102,83 +81,78 @@ func TestList_仕様_limitに応じた件数とエラー(t *testing.T) {
 	}
 }
 
-// 仕様: GetDetail は lang を validateLang で検証し、不正なら repo を呼ばずに対応エラーを返す。
-func TestGetDetail_仕様_lang不正は早期fail(t *testing.T) {
-	cases := []struct {
-		name    string
-		lang    string
-		wantErr error
-	}{
-		{
-			name:    "未指定は ErrLangRequired",
-			lang:    "",
-			wantErr: news.ErrLangRequired,
-		},
-		{
-			name:    "対応外は ErrUnsupportedLang",
-			lang:    "fr",
-			wantErr: news.ErrUnsupportedLang,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var called bool
-			repo := &port.MockNewsRepo{
-				GetPublishedByIDFn: func(_ context.Context, _ string, _ string) (*apinews.NewsDetail, error) {
-					called = true
-					return nil, nil
-				},
-			}
-			_, err := news.New(repo).GetDetail(context.Background(), "abc", tc.lang)
-
-			assert.ErrorIs(t, err, tc.wantErr)
-			assert.False(t, called, "lang 不正なら repo は呼ばれない")
-		})
-	}
-}
-
-// 仕様: GetDetail は lang が妥当なら repo を呼び、その返り値とエラーをそのまま返す。
-func TestGetDetail_仕様_repoの返り値がそのまま返る(t *testing.T) {
+func TestGetDetail(t *testing.T) {
 	dbErr := errors.New("db connection lost")
-	successDetail := &apinews.NewsDetail{ArticleID: "abc"}
+	pub := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	repoSuccess := &domain.PublishedArticleDetail{
+		ArticleID: "abc", Source: "aws", Title: "T", Summary: "S",
+		Body: "B", Tags: []string{"x"}, SourceURL: "https://example.com/abc",
+		PublishedAt: pub,
+	}
+	wantSuccess := &apinews.NewsDetail{
+		ArticleID: "abc", Source: "aws", Title: "T", Summary: "S",
+		Body: "B", Tags: []string{"x"}, SourceURL: "https://example.com/abc",
+		PublishedAt: pub,
+	}
 
 	cases := []struct {
-		name       string
-		repoReturn *apinews.NewsDetail
-		repoErr    error
-		wantDetail *apinews.NewsDetail
-		wantErr    error
+		name        string
+		lang        string
+		repoReturn  *domain.PublishedArticleDetail
+		repoErr     error
+		wantDetail  *apinews.NewsDetail
+		wantErr     error
+		wantRepoHit bool
 	}{
 		{
-			name:       "成功時は repo の値が返る",
-			repoReturn: successDetail,
-			wantDetail: successDetail,
-			wantErr:    nil,
+			name:        "成功時は domain DTO を apinews.NewsDetail に射影して返す",
+			lang:        domain.LangJa,
+			repoReturn:  repoSuccess,
+			wantDetail:  wantSuccess,
+			wantRepoHit: true,
 		},
 		{
-			name:    "repo の ErrNotFound がそのまま返る",
-			repoErr: port.ErrNotFound,
-			wantErr: port.ErrNotFound,
+			name:        "repo の ErrNotFound がそのまま返る",
+			lang:        domain.LangJa,
+			repoErr:     port.ErrNotFound,
+			wantErr:     port.ErrNotFound,
+			wantRepoHit: true,
 		},
 		{
-			name:    "repo の DB 障害がそのまま返る",
-			repoErr: dbErr,
-			wantErr: dbErr,
+			name:        "repo の DB 障害がそのまま返る",
+			lang:        domain.LangJa,
+			repoErr:     dbErr,
+			wantErr:     dbErr,
+			wantRepoHit: true,
+		},
+		{
+			name:        "lang 未指定は repo を呼ばず ErrLangRequired",
+			lang:        "",
+			wantErr:     news.ErrLangRequired,
+			wantRepoHit: false,
+		},
+		{
+			name:        "lang 対応外は repo を呼ばず ErrUnsupportedLang",
+			lang:        "fr",
+			wantErr:     news.ErrUnsupportedLang,
+			wantRepoHit: false,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			var repoCalled bool
 			repo := &port.MockNewsRepo{
-				GetPublishedByIDFn: func(_ context.Context, _ string, _ string) (*apinews.NewsDetail, error) {
+				GetPublishedByIDFn: func(_ context.Context, _ string, _ string) (*domain.PublishedArticleDetail, error) {
+					repoCalled = true
 					return tc.repoReturn, tc.repoErr
 				},
 			}
-			got, err := news.New(repo).GetDetail(context.Background(), "abc", apinews.LangJa)
+			got, err := news.New(repo).GetDetail(context.Background(), "abc", tc.lang)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantDetail, got)
+			assert.Equal(t, tc.wantRepoHit, repoCalled)
 		})
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/service/news"
@@ -27,22 +28,35 @@ func newEngine(h *rest.NewsHandler) *gin.Engine {
 	return r
 }
 
-// 仕様 (API_REFERENCE): GET /internal/v1/news は lang 必須 + limit バリデーションで 200 / 400 を返す。
-func TestList_仕様_クエリバリデーション(t *testing.T) {
+func TestList(t *testing.T) {
+	pub := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	successRows := []domain.PublishedArticleSummary{
+		{ArticleID: "01A", Source: "aws", Title: "T", Summary: "S", Tags: []string{"compute"}, PublishedAt: pub},
+	}
+
 	cases := []struct {
-		name       string
-		query      string
-		wantStatus int
+		name        string
+		query       string
+		repoReturn  []domain.PublishedArticleSummary
+		wantStatus  int
+		wantArticles []apinews.NewsListItem
+		wantLang    string
 	}{
 		{
-			name:       "lang + limit 指定で 200",
-			query:      "?lang=ja&limit=10",
-			wantStatus: http.StatusOK,
+			name:         "lang=ja + limit=10 で 200 (空配列)",
+			query:        "?lang=ja&limit=10",
+			repoReturn:   nil,
+			wantStatus:   http.StatusOK,
+			wantArticles: []apinews.NewsListItem{},
+			wantLang:     "ja",
 		},
 		{
-			name:       "lang=en + limit 指定で 200",
-			query:      "?lang=en&limit=10",
-			wantStatus: http.StatusOK,
+			name:         "lang=en + limit=10 で 200 (1 件)",
+			query:        "?lang=en&limit=10",
+			repoReturn:   successRows,
+			wantStatus:   http.StatusOK,
+			wantArticles: []apinews.NewsListItem{{ArticleID: "01A", Source: "aws", Title: "T", Summary: "S", Tags: []string{"compute"}, PublishedAt: pub}},
+			wantLang:     "en",
 		},
 		{
 			name:       "lang 未指定は 400",
@@ -82,11 +96,12 @@ func TestList_仕様_クエリバリデーション(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			var gotLang string
 			repo := &port.MockNewsRepo{
-				ListPublishedFn: func(_ context.Context, _ string, _ int) ([]apinews.NewsListItem, error) {
-					return []apinews.NewsListItem{}, nil
+				ListPublishedFn: func(_ context.Context, lang string, _ int) ([]domain.PublishedArticleSummary, error) {
+					gotLang = lang
+					return tc.repoReturn, nil
 				},
 			}
 			h := rest.NewNewsHandler(news.New(repo))
@@ -96,89 +111,65 @@ func TestList_仕様_クエリバリデーション(t *testing.T) {
 			newEngine(h).ServeHTTP(w, req)
 
 			assert.Equal(t, tc.wantStatus, w.Code)
+			assert.Equal(t, tc.wantLang, gotLang)
+
+			if tc.wantStatus != http.StatusOK {
+				return
+			}
+			var resp apinews.NewsListResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.NotNil(t, resp.Articles, "0 件でも nil ではなく空配列")
+			assert.Equal(t, tc.wantArticles, resp.Articles)
 		})
 	}
 }
 
-// 仕様: List レスポンスは {"articles": [...]} 形式、0 件でも nil ではなく空配列。
-func TestList_仕様_空配列(t *testing.T) {
-	repo := &port.MockNewsRepo{
-		ListPublishedFn: func(_ context.Context, _ string, _ int) ([]apinews.NewsListItem, error) {
-			return nil, nil
-		},
-	}
-	h := rest.NewNewsHandler(news.New(repo))
-
-	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news?lang=ja&limit=10", nil)
-	w := httptest.NewRecorder()
-	newEngine(h).ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	var resp apinews.NewsListResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.NotNil(t, resp.Articles)
-	assert.Empty(t, resp.Articles)
-}
-
-// 仕様: List は repo の結果を JSON 化して返す (lang は指定通り repo に渡る)。
-func TestList_仕様_レスポンス形(t *testing.T) {
-	pub := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
-	items := []apinews.NewsListItem{
-		{ArticleID: "01A", Source: "aws", Title: "T", Summary: "S", Tags: []string{"compute"}, PublishedAt: pub},
-	}
-	var gotLang string
-	repo := &port.MockNewsRepo{
-		ListPublishedFn: func(_ context.Context, lang string, _ int) ([]apinews.NewsListItem, error) {
-			gotLang = lang
-			return items, nil
-		},
-	}
-	h := rest.NewNewsHandler(news.New(repo))
-
-	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news?lang=en&limit=10", nil)
-	w := httptest.NewRecorder()
-	newEngine(h).ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "en", gotLang)
-
-	var resp apinews.NewsListResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.Len(t, resp.Articles, 1)
-	assert.Equal(t, "01A", resp.Articles[0].ArticleID)
-	assert.Equal(t, pub, resp.Articles[0].PublishedAt)
-}
-
-// 仕様 (FEATURE_SPEC §5): GetDetail の HTTP ステータスマッピング。
-func TestGetDetail_仕様_HTTPマッピング(t *testing.T) {
+func TestGetDetail(t *testing.T) {
 	otherErr := errors.New("db lost")
-
-	successDetail := &apinews.NewsDetail{ArticleID: "abc", PublishedAt: time.Now()}
+	pub := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	successRow := &domain.PublishedArticleDetail{
+		ArticleID: "01", Source: "oci", Title: "T", Summary: "S",
+		Body: "本文", Tags: []string{"ai"},
+		SourceURL:   "https://example.com/a",
+		PublishedAt: pub,
+	}
+	wantSuccess := apinews.NewsDetail{
+		ArticleID: "01", Source: "oci", Title: "T", Summary: "S",
+		Body: "本文", Tags: []string{"ai"},
+		SourceURL:   "https://example.com/a",
+		PublishedAt: pub,
+	}
 
 	cases := []struct {
 		name       string
 		query      string
-		repoReturn *apinews.NewsDetail
+		repoReturn *domain.PublishedArticleDetail
 		repoErr    error
 		wantStatus int
+		wantBody   *apinews.NewsDetail
+		wantLang   string
 	}{
 		{
-			name:       "成功",
+			name:       "成功時は body / source_url を含む JSON を返す",
 			query:      "?lang=ja",
-			repoReturn: successDetail,
+			repoReturn: successRow,
 			wantStatus: http.StatusOK,
+			wantBody:   &wantSuccess,
+			wantLang:   "ja",
 		},
 		{
 			name:       "not found は 404",
 			query:      "?lang=ja",
 			repoErr:    port.ErrNotFound,
 			wantStatus: http.StatusNotFound,
+			wantLang:   "ja",
 		},
 		{
 			name:       "その他エラーは 500",
 			query:      "?lang=ja",
 			repoErr:    otherErr,
 			wantStatus: http.StatusInternalServerError,
+			wantLang:   "ja",
 		},
 		{
 			name:       "lang 未指定は 400",
@@ -193,49 +184,29 @@ func TestGetDetail_仕様_HTTPマッピング(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			var gotLang string
 			repo := &port.MockNewsRepo{
-				GetPublishedByIDFn: func(_ context.Context, _ string, _ string) (*apinews.NewsDetail, error) {
+				GetPublishedByIDFn: func(_ context.Context, _ string, lang string) (*domain.PublishedArticleDetail, error) {
+					gotLang = lang
 					return tc.repoReturn, tc.repoErr
 				},
 			}
 			h := rest.NewNewsHandler(news.New(repo))
 
-			req := httptest.NewRequest(http.MethodGet, "/internal/v1/news/abc"+tc.query, nil)
+			req := httptest.NewRequest(http.MethodGet, "/internal/v1/news/01"+tc.query, nil)
 			w := httptest.NewRecorder()
 			newEngine(h).ServeHTTP(w, req)
 
 			assert.Equal(t, tc.wantStatus, w.Code)
+			assert.Equal(t, tc.wantLang, gotLang)
+
+			if tc.wantBody == nil {
+				return
+			}
+			var got apinews.NewsDetail
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+			assert.Equal(t, *tc.wantBody, got)
 		})
 	}
-}
-
-// 仕様: GetDetail は body / source_url / lang 特定の翻訳を含む JSON を返す。
-func TestGetDetail_仕様_本文とsource_urlを返す(t *testing.T) {
-	want := &apinews.NewsDetail{
-		ArticleID: "01", Source: "oci", Title: "T", Summary: "S",
-		Body: "本文", Tags: []string{"ai"},
-		SourceURL:   "https://example.com/a",
-		PublishedAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
-	}
-	var gotLang string
-	repo := &port.MockNewsRepo{
-		GetPublishedByIDFn: func(_ context.Context, _ string, lang string) (*apinews.NewsDetail, error) {
-			gotLang = lang
-			return want, nil
-		},
-	}
-	h := rest.NewNewsHandler(news.New(repo))
-
-	req := httptest.NewRequest(http.MethodGet, "/internal/v1/news/01?lang=ja", nil)
-	w := httptest.NewRecorder()
-	newEngine(h).ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "ja", gotLang)
-	var got apinews.NewsDetail
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	assert.Equal(t, want.Body, got.Body)
-	assert.Equal(t, want.SourceURL, got.SourceURL)
 }

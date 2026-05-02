@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/service/ingest"
@@ -23,19 +24,14 @@ func validEventJSON(t *testing.T) []byte {
 		SourceURL: "https://aws.amazon.com/foo",
 		Tags:      []string{"compute"},
 		Translations: []apinews.EventTranslation{
-			{Lang: apinews.LangJa, Title: "T", Summary: "S", Body: "B"},
+			{Lang: domain.LangJa, Title: "T", Summary: "S", Body: "B"},
 		},
 	})
 	require.NoError(t, err)
 	return data
 }
 
-// 仕様 (FEATURE_SPEC §3.1, ARCHITECTURE §ACK 戦略):
-//   - JSON デコード失敗 → ACK (nil 返り、repo を呼ばない)
-//   - ErrInvalidEventPayload (バリデーション失敗) → ACK (repo を呼ばない)
-//   - DB 障害など deterministic でないエラー → NACK (err を返す)
-//   - 正常 INSERT / 重複 → ACK
-func TestHandle_仕様_ACKとNACK(t *testing.T) {
+func TestHandle(t *testing.T) {
 	dbErr := errors.New("db connection lost")
 
 	cases := []struct {
@@ -96,7 +92,7 @@ func TestHandle_仕様_ACKとNACK(t *testing.T) {
 			payload: func() []byte {
 				b, _ := json.Marshal(apinews.ArticleCollectedEvent{
 					ArticleID: "01", Source: "aws", SourceURL: "u",
-					Translations: []apinews.EventTranslation{{Lang: apinews.LangEn, Title: "t", Summary: "s", Body: "b"}},
+					Translations: []apinews.EventTranslation{{Lang: domain.LangEn, Title: "t", Summary: "s", Body: "b"}},
 				})
 				return b
 			}(),
@@ -124,11 +120,10 @@ func TestHandle_仕様_ACKとNACK(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			var articleCalls, transCalls int
 			repo := &port.MockNewsRepo{
-				InsertArticleFn: func(_ context.Context, _ apinews.Article) (bool, error) {
+				InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
 					articleCalls++
 					return tc.articleInserted, tc.articleErr
 				},

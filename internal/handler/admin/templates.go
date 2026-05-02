@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"html/template"
 
-	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 )
 
 //go:embed templates/*.html templates/partials/*.html
@@ -57,13 +57,13 @@ func parseTemplates() (*templates, error) {
 // templateFuncMap は Go テンプレートから呼べるヘルパー関数を集める。
 func templateFuncMap() template.FuncMap {
 	return template.FuncMap{
-		// statusNE は typed な apinews.Status と生文字列を比較するためのヘルパー。
-		"statusNE": func(s apinews.Status, target string) bool {
+		// statusNE は typed な domain.Status と生文字列を比較するためのヘルパー。
+		"statusNE": func(s domain.Status, target string) bool {
 			return string(s) != target
 		},
 		// findTranslation は指定 lang の翻訳を検索して返す。存在しなければ nil。
 		// 編集画面で各言語タブの既存内容を埋めるために使う。
-		"findTranslation": func(translations []apinews.Translation, lang string) *apinews.Translation {
+		"findTranslation": func(translations []domain.Translation, lang string) *domain.Translation {
 			for i := range translations {
 				if translations[i].Lang == lang {
 					return &translations[i]

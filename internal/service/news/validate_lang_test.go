@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 )
 
 // 仕様 (FEATURE_SPEC §4): validateLang は空 / 未対応値を専用エラーで弾き、
@@ -20,12 +20,12 @@ func TestValidateLang_仕様(t *testing.T) {
 	}{
 		{
 			name:    "ja は通過",
-			lang:    apinews.LangJa,
+			lang:    domain.LangJa,
 			wantErr: nil,
 		},
 		{
 			name:    "en は通過",
-			lang:    apinews.LangEn,
+			lang:    domain.LangEn,
 			wantErr: nil,
 		},
 		{

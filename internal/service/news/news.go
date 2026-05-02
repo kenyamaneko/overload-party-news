@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
@@ -34,6 +35,7 @@ func New(querier port.PublicNewsQuerier) *Service {
 }
 
 // List は指定言語で公開中記事の一覧を limit 件返す。
+// repo はドメイン DTO を返すため、ここで API 契約 (apinews.NewsListItem) に射影する。
 func (s *Service) List(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error) {
 	if err := validateLang(lang); err != nil {
 		return nil, err
@@ -42,16 +44,47 @@ func (s *Service) List(ctx context.Context, lang string, limit int) ([]apinews.N
 		return nil, fmt.Errorf("%w: limit=%d must be in (0, %d]",
 			ErrInvalidLimit, limit, ListLimitMax)
 	}
-	return s.querier.ListPublished(ctx, lang, limit)
+	rows, err := s.querier.ListPublished(ctx, lang, limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]apinews.NewsListItem, len(rows))
+	for i, r := range rows {
+		items[i] = apinews.NewsListItem{
+			ArticleID:         r.ArticleID,
+			Source:            r.Source,
+			Title:             r.Title,
+			Summary:           r.Summary,
+			Tags:              r.Tags,
+			SourcePublishedAt: r.SourcePublishedAt,
+			PublishedAt:       r.PublishedAt,
+		}
+	}
+	return items, nil
 }
 
 // GetDetail は指定言語で公開中記事の詳細を返す。
 // 非存在 / 非公開 / 該当 lang 翻訳なしは port.ErrNotFound が bubble する。
+// 取得した domain DTO は API 契約 (apinews.NewsDetail) に射影してから返す。
 func (s *Service) GetDetail(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error) {
 	if err := validateLang(lang); err != nil {
 		return nil, err
 	}
-	return s.querier.GetPublishedByID(ctx, articleID, lang)
+	d, err := s.querier.GetPublishedByID(ctx, articleID, lang)
+	if err != nil {
+		return nil, err
+	}
+	return &apinews.NewsDetail{
+		ArticleID:         d.ArticleID,
+		Source:            d.Source,
+		Title:             d.Title,
+		Summary:           d.Summary,
+		Body:              d.Body,
+		Tags:              d.Tags,
+		SourceURL:         d.SourceURL,
+		SourcePublishedAt: d.SourcePublishedAt,
+		PublishedAt:       d.PublishedAt,
+	}, nil
 }
 
 // validateLang は lang を repo に渡す前に弾くことで「不正入力 (400)」と「該当データなし (404)」を区別するためにある。
@@ -63,7 +96,7 @@ func validateLang(lang string) error {
 	if lang == "" {
 		return ErrLangRequired
 	}
-	if !slices.Contains(apinews.SupportedLangs, lang) {
+	if !slices.Contains(domain.SupportedLangs, lang) {
 		return fmt.Errorf("%w: %q", ErrUnsupportedLang, lang)
 	}
 	return nil

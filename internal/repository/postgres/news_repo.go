@@ -1,5 +1,6 @@
 // Package postgres は port で定義されたリポジトリインタフェースの PostgreSQL 実装を提供する。
 // pgxpool を共有し、pure data access 層として振る舞う (ビジネスロジックを持たない)。
+// API 契約 (apinews) には依存せず、入出力は internal/domain の型で表現する。
 package postgres
 
 import (
@@ -12,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
-	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
 // PostgreSQL SQLSTATE.
@@ -43,9 +44,7 @@ func NewNewsRepository(pool *pgxpool.Pool) *NewsRepository {
 }
 
 // InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
-// 校閲状態は永続化せず、reviewed_at / published_at の組から導出する設計のため、
-// 新規行は両者 NULL で挿入される (= apinews.DeriveStatus で StatusPending)。
-func (r *NewsRepository) InsertArticle(ctx context.Context, article apinews.Article) (bool, error) {
+func (r *NewsRepository) InsertArticle(ctx context.Context, article domain.Article) (bool, error) {
 	tag, err := r.pool.Exec(ctx,
 		`INSERT INTO news.news_articles
 			(article_id, source, source_url, tags, source_published_at)
@@ -81,10 +80,10 @@ func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string
 	return nil
 }
 
-// ListPublished は公開可能 (= apinews.DeriveStatus が StatusPublished) かつ指定 lang の翻訳がある記事を
+// ListPublished は公開可能かつ指定 lang の翻訳がある記事を
 // published_at DESC NULLS LAST, article_id DESC で limit 件返す。
-// 「公開」の述語 (published_at IS NOT NULL AND published_at >= reviewed_at) は DeriveStatus と 1:1 対応。
-func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit int) ([]apinews.NewsListItem, error) {
+// WHERE 述語は domain.DeriveStatus の StatusPublished 条件と 1:1 対応。
+func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit int) ([]domain.PublishedArticleSummary, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT a.article_id, a.source, t.title, t.summary, a.tags, a.source_published_at, a.published_at
 		   FROM news.news_articles a
@@ -100,9 +99,9 @@ func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit i
 	}
 	defer rows.Close()
 
-	var items []apinews.NewsListItem
+	var items []domain.PublishedArticleSummary
 	for rows.Next() {
-		var item apinews.NewsListItem
+		var item domain.PublishedArticleSummary
 		if err := rows.Scan(
 			&item.ArticleID, &item.Source, &item.Title, &item.Summary, &item.Tags,
 			&item.SourcePublishedAt, &item.PublishedAt,
@@ -120,7 +119,7 @@ func (r *NewsRepository) ListPublished(ctx context.Context, lang string, limit i
 // GetPublishedByID は公開可能 + 指定 lang の翻訳がある単一記事の詳細 (body / source_url 含む) を返す。
 // 一覧用の ListPublished と違い body を含むため、詳細画面用のクエリとして分離している。
 // 非存在/非公開/翻訳なしは ErrNotFound。
-func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string, lang string) (*apinews.NewsDetail, error) {
+func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string, lang string) (*domain.PublishedArticleDetail, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT a.article_id, a.source, t.title, t.summary, t.body, a.tags,
 		        a.source_url, a.source_published_at, a.published_at
@@ -131,7 +130,7 @@ func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string,
 		    AND a.published_at IS NOT NULL AND a.published_at >= a.reviewed_at`,
 		articleID, lang,
 	)
-	var d apinews.NewsDetail
+	var d domain.PublishedArticleDetail
 	if err := row.Scan(
 		&d.ArticleID, &d.Source, &d.Title, &d.Summary, &d.Body, &d.Tags,
 		&d.SourceURL, &d.SourcePublishedAt, &d.PublishedAt,
@@ -144,9 +143,9 @@ func (r *NewsRepository) GetPublishedByID(ctx context.Context, articleID string,
 	return &d, nil
 }
 
-// ListArticles は記事を ingested_at DESC で limit 件返す。フィルタは行わない (純粋な永続層)。
-// status による絞り込みは service 層で apinews.DeriveStatus を使って実施する。
-func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]apinews.Article, error) {
+// ListArticles は記事を ingested_at DESC で limit 件返す。
+// status フィルタは行わない (status 概念を持たないため、絞り込みは service 層の責務)。
+func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]domain.Article, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT article_id, source, source_url, tags,
 		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
@@ -160,7 +159,7 @@ func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]apinews
 	}
 	defer rows.Close()
 
-	var articles []apinews.Article
+	var articles []domain.Article
 	for rows.Next() {
 		a, err := scanArticle(rows)
 		if err != nil {
@@ -175,7 +174,7 @@ func (r *NewsRepository) ListArticles(ctx context.Context, limit int) ([]apinews
 }
 
 // GetArticleByID は status を問わず記事を返す。非存在なら ErrNotFound。
-func (r *NewsRepository) GetArticleByID(ctx context.Context, articleID string) (*apinews.Article, error) {
+func (r *NewsRepository) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT article_id, source, source_url, tags,
 		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
@@ -195,7 +194,7 @@ func (r *NewsRepository) GetArticleByID(ctx context.Context, articleID string) (
 
 // ListTranslationsByArticleIDs は指定 article_id 群の翻訳行を 1 クエリで返す。
 // グループ化は行わない (呼び出し側で必要なら article_id でまとめる)。
-func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]apinews.Translation, error) {
+func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.Translation, error) {
 	if len(articleIDs) == 0 {
 		return nil, nil
 	}
@@ -211,9 +210,9 @@ func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, artic
 	}
 	defer rows.Close()
 
-	var translations []apinews.Translation
+	var translations []domain.Translation
 	for rows.Next() {
-		var t apinews.Translation
+		var t domain.Translation
 		if err := rows.Scan(
 			&t.ArticleID, &t.Lang, &t.Title, &t.Summary, &t.Body, &t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
@@ -227,8 +226,7 @@ func (r *NewsRepository) ListTranslationsByArticleIDs(ctx context.Context, artic
 	return translations, nil
 }
 
-// Publish は承認遷移。published_at と reviewed_at を同時刻にセットすることで
-// apinews.DeriveStatus が StatusPublished を返す状態を作る。非存在なら ErrNotFound。
+// Publish は承認遷移 (FEATURE_SPEC §6)。非存在なら ErrNotFound。
 func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
@@ -239,8 +237,7 @@ func (r *NewsRepository) Publish(ctx context.Context, articleID string, reviewer
 		articleID, now, reviewer)
 }
 
-// Reject は却下遷移。reviewed_at だけ更新し、published_at は保持する (再承認時の履歴参照用)。
-// 結果として published_at < reviewed_at となり、apinews.DeriveStatus が StatusRejected を返す。
+// Reject は却下遷移 (FEATURE_SPEC §6)。非存在なら ErrNotFound。
 func (r *NewsRepository) Reject(ctx context.Context, articleID string, reviewer string, now time.Time) error {
 	return r.updateReviewed(ctx, articleID,
 		`UPDATE news.news_articles
@@ -291,9 +288,8 @@ func (r *NewsRepository) updateReviewed(ctx context.Context, articleID string, s
 }
 
 // scanArticle は Article 全カラム分の Scan を共通化する。
-// Status は永続化されないため Scan 後は空 (呼び出し側 service が apinews.DeriveStatus で埋める)。
-func scanArticle(row pgx.Row) (*apinews.Article, error) {
-	var a apinews.Article
+func scanArticle(row pgx.Row) (*domain.Article, error) {
+	var a domain.Article
 	if err := row.Scan(
 		&a.ArticleID, &a.Source, &a.SourceURL, &a.Tags,
 		&a.SourcePublishedAt, &a.PublishedAt, &a.IngestedAt,

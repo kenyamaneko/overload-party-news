@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
@@ -37,7 +38,7 @@ func (s *Service) Insert(ctx context.Context, event apinews.ArticleCollectedEven
 		return false, err
 	}
 
-	article := apinews.Article{
+	article := domain.Article{
 		ArticleID:         event.ArticleID,
 		Source:            event.Source,
 		SourceURL:         event.SourceURL,
@@ -72,7 +73,7 @@ func validateEvent(e apinews.ArticleCollectedEvent) error {
 		return fmt.Errorf("%w: translations must contain exactly 1 entry (ja), got %d", ErrInvalidEventPayload, len(e.Translations))
 	}
 	t := e.Translations[0]
-	if t.Lang != apinews.LangJa {
+	if t.Lang != domain.LangJa {
 		return fmt.Errorf("%w: translations[0].lang must be ja, got %q", ErrInvalidEventPayload, t.Lang)
 	}
 	if t.Title == "" {

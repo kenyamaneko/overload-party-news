@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/service/review"
-	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
 var fixedNow = time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
@@ -36,9 +35,7 @@ type reviewCall struct {
 	now       time.Time
 }
 
-// 仕様 (FEATURE_SPEC §6.4): UpsertTranslation は title / summary / body の長さを検証してから repo に転送する。
-// 不正入力は ErrInvalidField で repo に到達せず、正常入力時は repo にすべての値がそのまま渡る。
-func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
+func TestUpsertTranslation(t *testing.T) {
 	const articleID = "article-1"
 	cases := []struct {
 		name     string
@@ -53,9 +50,8 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 			title:   "a",
 			summary: "b",
 			body:    "c",
-			wantErr: nil,
 			wantCall: &upsertCall{
-				articleID: articleID, lang: apinews.LangJa,
+				articleID: articleID, lang: domain.LangJa,
 				title: "a", summary: "b", body: "c",
 			},
 		},
@@ -64,53 +60,47 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 			title:   strings.Repeat("あ", review.TitleMaxLen),
 			summary: strings.Repeat("い", review.SummaryMaxLen),
 			body:    "本文",
-			wantErr: nil,
 			wantCall: &upsertCall{
-				articleID: articleID, lang: apinews.LangJa,
+				articleID: articleID, lang: domain.LangJa,
 				title:   strings.Repeat("あ", review.TitleMaxLen),
 				summary: strings.Repeat("い", review.SummaryMaxLen),
 				body:    "本文",
 			},
 		},
 		{
-			name:     "タイトル空",
-			title:    "",
-			summary:  "b",
-			body:     "c",
-			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
+			name:    "タイトル空",
+			title:   "",
+			summary: "b",
+			body:    "c",
+			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:     "タイトル超過",
-			title:    strings.Repeat("a", review.TitleMaxLen+1),
-			summary:  "b",
-			body:     "c",
-			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
+			name:    "タイトル超過",
+			title:   strings.Repeat("a", review.TitleMaxLen+1),
+			summary: "b",
+			body:    "c",
+			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:     "要約空",
-			title:    "a",
-			summary:  "",
-			body:     "c",
-			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
+			name:    "要約空",
+			title:   "a",
+			summary: "",
+			body:    "c",
+			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:     "要約超過",
-			title:    "a",
-			summary:  strings.Repeat("b", review.SummaryMaxLen+1),
-			body:     "c",
-			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
+			name:    "要約超過",
+			title:   "a",
+			summary: strings.Repeat("b", review.SummaryMaxLen+1),
+			body:    "c",
+			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:     "本文空",
-			title:    "a",
-			summary:  "b",
-			body:     "",
-			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
+			name:    "本文空",
+			title:   "a",
+			summary: "b",
+			body:    "",
+			wantErr: review.ErrInvalidField,
 		},
 	}
 
@@ -123,7 +113,7 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 					return nil
 				},
 			}
-			err := newService(repo).UpsertTranslation(context.Background(), articleID, apinews.LangJa, tc.title, tc.summary, tc.body)
+			err := newService(repo).UpsertTranslation(context.Background(), articleID, domain.LangJa, tc.title, tc.summary, tc.body)
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantCall, got)
@@ -131,8 +121,7 @@ func TestUpsertTranslation_仕様_バリデーション(t *testing.T) {
 	}
 }
 
-// 仕様: Publish は空 reviewer を ErrInvalidField で弾き、正常時は repo に articleID / reviewer / 注入された now が渡る。
-func TestPublish_仕様_reviewerと注入now(t *testing.T) {
+func TestPublish(t *testing.T) {
 	const articleID = "article-1"
 	cases := []struct {
 		name     string
@@ -143,14 +132,12 @@ func TestPublish_仕様_reviewerと注入now(t *testing.T) {
 		{
 			name:     "正常 reviewer は repo に articleID/reviewer/now が渡る",
 			reviewer: "alice@example.com",
-			wantErr:  nil,
 			wantCall: &reviewCall{articleID: articleID, reviewer: "alice@example.com", now: fixedNow},
 		},
 		{
 			name:     "空 reviewer は ErrInvalidField で repo に到達しない",
 			reviewer: "",
 			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
 		},
 	}
 
@@ -171,8 +158,7 @@ func TestPublish_仕様_reviewerと注入now(t *testing.T) {
 	}
 }
 
-// 仕様: Reject は空 reviewer を ErrInvalidField で弾き、正常時は repo に articleID / reviewer / 注入された now が渡る。
-func TestReject_仕様_reviewerと注入now(t *testing.T) {
+func TestReject(t *testing.T) {
 	const articleID = "article-1"
 	cases := []struct {
 		name     string
@@ -183,14 +169,12 @@ func TestReject_仕様_reviewerと注入now(t *testing.T) {
 		{
 			name:     "正常 reviewer は repo に articleID/reviewer/now が渡る",
 			reviewer: "alice@example.com",
-			wantErr:  nil,
 			wantCall: &reviewCall{articleID: articleID, reviewer: "alice@example.com", now: fixedNow},
 		},
 		{
 			name:     "空 reviewer は ErrInvalidField で repo に到達しない",
 			reviewer: "",
 			wantErr:  review.ErrInvalidField,
-			wantCall: nil,
 		},
 	}
 
@@ -211,174 +195,151 @@ func TestReject_仕様_reviewerと注入now(t *testing.T) {
 	}
 }
 
-// 仕様: List は limit を検証する。範囲外は ErrInvalidField、範囲内はエラーなし。
-func TestList_仕様_limitバリデーション(t *testing.T) {
-	cases := []struct {
-		name    string
-		limit   int
-		wantErr error
-	}{
-		{
-			name:    "正常 limit",
-			limit:   50,
-			wantErr: nil,
-		},
-		{
-			name:    "0 はエラー",
-			limit:   0,
-			wantErr: review.ErrInvalidField,
-		},
-		{
-			name:    "負値はエラー",
-			limit:   -1,
-			wantErr: review.ErrInvalidField,
-		},
-		{
-			name:    "上限超過はエラー",
-			limit:   review.AdminListLimitMax + 1,
-			wantErr: review.ErrInvalidField,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &port.MockNewsRepo{
-				ListArticlesFn: func(_ context.Context, _ int) ([]apinews.Article, error) {
-					return nil, nil
-				},
-				ListTranslationsByArticleIDsFn: func(_ context.Context, _ []string) ([]apinews.Translation, error) {
-					return nil, nil
-				},
-			}
-			_, err := newService(repo).List(context.Background(), apinews.Statuses, tc.limit)
-
-			assert.ErrorIs(t, err, tc.wantErr)
-		})
-	}
-}
-
-// 仕様: List は repo から取得した記事に DeriveStatus を適用し、要求 status 集合に含まれるものだけ返す。
-// (repo は status 概念を持たないため、絞り込みは service の責務)
-func TestList_仕様_statusフィルタはservice層で適用(t *testing.T) {
+func TestList(t *testing.T) {
 	now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 	earlier := now.Add(-1 * time.Hour)
-	pendingArticle := apinews.Article{ArticleID: "a-pending"}
-	publishedArticle := apinews.Article{ArticleID: "a-published", ReviewedAt: &now, PublishedAt: &now}
-	rejectedArticle := apinews.Article{ArticleID: "a-rejected", ReviewedAt: &now, PublishedAt: &earlier}
+	pendingArticle := domain.Article{ArticleID: "a-pending"}
+	publishedArticle := domain.Article{ArticleID: "a-published", ReviewedAt: &now, PublishedAt: &now}
+	rejectedArticle := domain.Article{ArticleID: "a-rejected", ReviewedAt: &now, PublishedAt: &earlier}
+	threeArticles := []domain.Article{pendingArticle, publishedArticle, rejectedArticle}
 
 	cases := []struct {
 		name        string
-		filter      []apinews.Status
+		articles    []domain.Article
+		filter      []domain.Status
+		limit       int
+		wantErr     error
 		wantIDs     []string
-		wantTransOn []string
+		wantTransOn []string // nil 想定 = 翻訳取得呼び出しなし
 	}{
 		{
-			name:        "全 status 列挙で 3 件",
-			filter:      apinews.Statuses,
+			name:    "limit=0 は ErrInvalidField",
+			limit:   0,
+			filter:  domain.Statuses,
+			wantErr: review.ErrInvalidField,
+		},
+		{
+			name:    "limit 負値は ErrInvalidField",
+			limit:   -1,
+			filter:  domain.Statuses,
+			wantErr: review.ErrInvalidField,
+		},
+		{
+			name:    "limit 上限超過は ErrInvalidField",
+			limit:   review.AdminListLimitMax + 1,
+			filter:  domain.Statuses,
+			wantErr: review.ErrInvalidField,
+		},
+		{
+			name:        "全 status 列挙で 3 件 (DeriveStatus で各 status を導出)",
+			articles:    threeArticles,
+			filter:      domain.Statuses,
+			limit:       50,
 			wantIDs:     []string{"a-pending", "a-published", "a-rejected"},
 			wantTransOn: []string{"a-pending", "a-published", "a-rejected"},
 		},
 		{
 			name:        "pending のみで 1 件",
-			filter:      []apinews.Status{apinews.StatusPending},
+			articles:    threeArticles,
+			filter:      []domain.Status{domain.StatusPending},
+			limit:       50,
 			wantIDs:     []string{"a-pending"},
 			wantTransOn: []string{"a-pending"},
 		},
 		{
 			name:        "published + rejected の複数指定で 2 件",
-			filter:      []apinews.Status{apinews.StatusPublished, apinews.StatusRejected},
+			articles:    threeArticles,
+			filter:      []domain.Status{domain.StatusPublished, domain.StatusRejected},
+			limit:       50,
 			wantIDs:     []string{"a-published", "a-rejected"},
 			wantTransOn: []string{"a-published", "a-rejected"},
+		},
+		{
+			name:        "フィルタ後ゼロ件のとき翻訳取得は呼ばれない",
+			articles:    []domain.Article{publishedArticle},
+			filter:      []domain.Status{domain.StatusPending},
+			limit:       50,
+			wantIDs:     nil,
+			wantTransOn: nil,
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			var gotTransIDs []string
+			var transCalled bool
 			repo := &port.MockNewsRepo{
-				ListArticlesFn: func(_ context.Context, _ int) ([]apinews.Article, error) {
-					return []apinews.Article{pendingArticle, publishedArticle, rejectedArticle}, nil
+				ListArticlesFn: func(_ context.Context, _ int) ([]domain.Article, error) {
+					return tc.articles, nil
 				},
-				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]apinews.Translation, error) {
+				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]domain.Translation, error) {
+					transCalled = true
 					gotTransIDs = ids
 					return nil, nil
 				},
 			}
 
-			got, err := newService(repo).List(context.Background(), tc.filter, 50)
-			require.NoError(t, err)
+			got, err := newService(repo).List(context.Background(), tc.filter, tc.limit)
+			assert.ErrorIs(t, err, tc.wantErr)
 
-			gotIDs := make([]string, len(got))
-			for i, g := range got {
-				gotIDs[i] = g.Article.ArticleID
+			var gotIDs []string
+			for _, g := range got {
+				gotIDs = append(gotIDs, g.Article.ArticleID)
 			}
 			assert.Equal(t, tc.wantIDs, gotIDs)
-			assert.Equal(t, tc.wantTransOn, gotTransIDs, "翻訳取得は status フィルタ後の article_id でのみ行われる")
+			assert.Equal(t, tc.wantTransOn != nil, transCalled, "翻訳取得呼び出し有無")
+			assert.Equal(t, tc.wantTransOn, gotTransIDs)
 		})
 	}
 }
 
-// 仕様: 全件 0 件 (フィルタ後) のとき翻訳取得は呼ばれない。
-func TestList_仕様_フィルタ後ゼロ件で翻訳取得しない(t *testing.T) {
-	now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
-	publishedOnly := apinews.Article{ArticleID: "x", ReviewedAt: &now, PublishedAt: &now}
-
-	var transCallCount int
-	repo := &port.MockNewsRepo{
-		ListArticlesFn: func(_ context.Context, _ int) ([]apinews.Article, error) {
-			return []apinews.Article{publishedOnly}, nil
-		},
-		ListTranslationsByArticleIDsFn: func(_ context.Context, _ []string) ([]apinews.Translation, error) {
-			transCallCount++
-			return nil, nil
-		},
+func TestGet(t *testing.T) {
+	article := &domain.Article{ArticleID: "01", Status: domain.StatusPending}
+	translations := []domain.Translation{
+		{ArticleID: "01", Lang: domain.LangJa, Title: "ja title"},
 	}
-	got, err := newService(repo).List(context.Background(), []apinews.Status{apinews.StatusPending}, 50)
-	require.NoError(t, err)
-	assert.Empty(t, got)
-	assert.Equal(t, 0, transCallCount)
-}
 
-// 仕様: Get は記事 + その翻訳を取得して合成する。記事が無ければ翻訳取得は呼ばれない。
-func TestGet_仕様_記事と翻訳を結合(t *testing.T) {
-	article := &apinews.Article{ArticleID: "01", Status: apinews.StatusPending}
-	translations := []apinews.Translation{
-		{ArticleID: "01", Lang: apinews.LangJa, Title: "ja title"},
-	}
-	var transCallCount int
-	repo := &port.MockNewsRepo{
-		GetArticleByIDFn: func(_ context.Context, _ string) (*apinews.Article, error) {
-			return article, nil
+	cases := []struct {
+		name            string
+		articleReturn   *domain.Article
+		articleErr      error
+		wantErr         error
+		want            *domain.ArticleWithTranslations
+		wantTransCalled bool
+	}{
+		{
+			name:            "記事ありなら記事 + 翻訳を結合して返す",
+			articleReturn:   article,
+			want:            &domain.ArticleWithTranslations{Article: *article, Translations: translations},
+			wantTransCalled: true,
 		},
-		ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]apinews.Translation, error) {
-			transCallCount++
-			assert.Equal(t, []string{"01"}, ids)
-			return translations, nil
+		{
+			name:            "記事が ErrNotFound のとき翻訳取得は呼ばれない",
+			articleErr:      port.ErrNotFound,
+			wantErr:         port.ErrNotFound,
+			want:            nil,
+			wantTransCalled: false,
 		},
 	}
 
-	got, err := newService(repo).Get(context.Background(), "01")
-	require.NoError(t, err)
-	assert.Equal(t, *article, got.Article)
-	assert.Equal(t, translations, got.Translations)
-	assert.Equal(t, 1, transCallCount)
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var transCalled bool
+			repo := &port.MockNewsRepo{
+				GetArticleByIDFn: func(_ context.Context, _ string) (*domain.Article, error) {
+					return tc.articleReturn, tc.articleErr
+				},
+				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]domain.Translation, error) {
+					transCalled = true
+					assert.Equal(t, []string{"01"}, ids)
+					return translations, nil
+				},
+			}
 
-// 仕様: Get は GetArticleByID が ErrNotFound のとき翻訳取得を呼ばない。
-func TestGet_仕様_記事なしなら翻訳取得しない(t *testing.T) {
-	var transCallCount int
-	repo := &port.MockNewsRepo{
-		GetArticleByIDFn: func(_ context.Context, _ string) (*apinews.Article, error) {
-			return nil, port.ErrNotFound
-		},
-		ListTranslationsByArticleIDsFn: func(_ context.Context, _ []string) ([]apinews.Translation, error) {
-			transCallCount++
-			return nil, nil
-		},
+			got, err := newService(repo).Get(context.Background(), "01")
+			assert.ErrorIs(t, err, tc.wantErr)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.wantTransCalled, transCalled)
+		})
 	}
-
-	_, err := newService(repo).Get(context.Background(), "ghost")
-	assert.ErrorIs(t, err, port.ErrNotFound)
-	assert.Equal(t, 0, transCallCount)
 }
