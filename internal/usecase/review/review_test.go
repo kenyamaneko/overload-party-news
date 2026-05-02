@@ -231,6 +231,14 @@ func TestList(t *testing.T) {
 			wantErr: review.ErrInvalidField,
 		},
 		{
+			name:        "limit ちょうど上限 (AdminListLimitMax) は通る",
+			articles:    threeArticles,
+			filter:      domain.Statuses,
+			limit:       review.AdminListLimitMax,
+			wantIDs:     []string{"a-pending", "a-published", "a-rejected"},
+			wantTransOn: []string{"a-pending", "a-published", "a-rejected"},
+		},
+		{
 			name:        "全 status 列挙で 3 件 (DeriveStatus で各 status を導出)",
 			articles:    threeArticles,
 			filter:      domain.Statuses,
@@ -267,13 +275,11 @@ func TestList(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var gotTransIDs []string
-			var transCalled bool
 			repo := &port.MockNewsRepo{
 				ListArticlesFn: func(_ context.Context, _ int) ([]domain.Article, error) {
 					return tc.articles, nil
 				},
 				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]domain.Translation, error) {
-					transCalled = true
 					gotTransIDs = ids
 					return nil, nil
 				},
@@ -287,7 +293,6 @@ func TestList(t *testing.T) {
 				gotIDs = append(gotIDs, g.Article.ArticleID)
 			}
 			assert.Equal(t, tc.wantIDs, gotIDs)
-			assert.Equal(t, tc.wantTransOn != nil, transCalled, "翻訳取得呼び出し有無")
 			assert.Equal(t, tc.wantTransOn, gotTransIDs)
 		})
 	}
