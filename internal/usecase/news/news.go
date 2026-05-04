@@ -10,6 +10,7 @@ import (
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
+	"github.com/kenyamaneko/overload-party-news/internal/presenter"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
@@ -45,19 +46,7 @@ func (uc *Interactor) List(ctx context.Context, lang string, limit int) ([]apine
 	if err != nil {
 		return nil, err
 	}
-	items := make([]apinews.NewsListItem, len(rows))
-	for i, r := range rows {
-		items[i] = apinews.NewsListItem{
-			ArticleID:         r.ArticleID,
-			Source:            r.Source,
-			Title:             r.Title,
-			Summary:           r.Summary,
-			Tags:              r.Tags,
-			SourcePublishedAt: r.SourcePublishedAt,
-			PublishedAt:       r.PublishedAt,
-		}
-	}
-	return items, nil
+	return presenter.ToNewsListItems(rows), nil
 }
 
 // GetDetail は指定言語で公開中記事の詳細を返す。非存在 / 非公開 / 該当 lang 翻訳なしは port.ErrNotFound が bubble する。
@@ -69,17 +58,7 @@ func (uc *Interactor) GetDetail(ctx context.Context, articleID string, lang stri
 	if err != nil {
 		return nil, err
 	}
-	return &apinews.NewsDetail{
-		ArticleID:         d.ArticleID,
-		Source:            d.Source,
-		Title:             d.Title,
-		Summary:           d.Summary,
-		Body:              d.Body,
-		Tags:              d.Tags,
-		SourceURL:         d.SourceURL,
-		SourcePublishedAt: d.SourcePublishedAt,
-		PublishedAt:       d.PublishedAt,
-	}, nil
+	return presenter.ToNewsDetail(d), nil
 }
 
 // validateLang は lang を repo に渡す前に弾き「不正入力 (400)」と「該当データなし (404)」を区別する。

@@ -8,6 +8,7 @@ import (
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
+	"github.com/kenyamaneko/overload-party-news/internal/presenter"
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
@@ -33,14 +34,7 @@ func (uc *Interactor) Insert(ctx context.Context, event apinews.ArticleCollected
 		return false, err
 	}
 
-	article := domain.Article{
-		ArticleID:         event.ArticleID,
-		Source:            event.Source,
-		SourceURL:         event.SourceURL,
-		Tags:              event.Tags,
-		SourcePublishedAt: event.SourcePublishedAt,
-	}
-	inserted, err = uc.writer.InsertArticle(ctx, article)
+	inserted, err = uc.writer.InsertArticle(ctx, presenter.ArticleFromCollectedEvent(event))
 	if err != nil {
 		return false, err
 	}
