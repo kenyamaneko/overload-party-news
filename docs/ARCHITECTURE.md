@@ -86,10 +86,6 @@ newsfeed が同じ記事を再送してきた場合、校閲済みのテキス�
 
 「payload 不正 → ACK」は一見奇異だが、NACK して無限リトライさせるより dead-letter に送った方が運用負担が低い。Pub/Sub 側で DLQ 設定を入れる前提。
 
-## Presenter 層の位置づけ
-
-`internal/presenter/` は domain ↔ wire DTO (`packages/api-news`) の境界変換を集約するパッケージ。位置づけと将来の移行方針は overload-party-card の同名セクションを参照。
-
 ## HTMX レンダリング層の構造
 
 管理 UI は `html/template` + `embed.FS` でバイナリに埋め込まれた HTML を動的生成する。FE 成果物は独立に存在しない。
