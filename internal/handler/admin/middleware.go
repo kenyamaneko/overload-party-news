@@ -18,9 +18,6 @@ const iapEmailHeader = "X-Goog-Authenticated-User-Email"
 // 本番で誤って使われないよう config.Env で分岐する。
 const localReviewerFallback = "local-dev@example.com"
 
-// reviewerContextKey は context に reviewer を埋めるためのキーの型。
-type reviewerContextKey struct{}
-
 // ErrMissingIAPHeader は IAP ヘッダが欠けているときに返す。handler は 401 にマップする。
 var ErrMissingIAPHeader = errors.New("missing IAP authenticated user header")
 

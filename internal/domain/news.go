@@ -28,7 +28,8 @@ func DeriveStatus(a Article) Status {
 	return StatusRejected
 }
 
-// 対応言語コード (MVP は ja / en のみ)。
+// 対応言語コード (MVP は ja / en のみ)。本パッケージが SSoT。
+// data/openapi.yaml の Lang enum と内容を一致させる (drift は enum_drift_test で固定)。
 const (
 	LangJa = "ja"
 	LangEn = "en"
@@ -36,6 +37,19 @@ const (
 
 // SupportedLangs は対応言語コード集合。DB 側 CHECK 制約と同期して保つ。
 var SupportedLangs = []string{LangJa, LangEn}
+
+// 記事ソース種別。本パッケージが SSoT。値の追加・削除は data/openapi.yaml の Source enum と
+// 同時に行い、片方だけ変えた場合は enum_drift_test が失敗する。
+const (
+	SourceAws         = "aws"
+	SourceGoogleCloud = "google-cloud"
+	SourceAzure       = "azure"
+	SourceOci         = "oci"
+	SourceOther       = "other"
+)
+
+// Sources は対応 Source 値の列挙。
+var Sources = []string{SourceAws, SourceGoogleCloud, SourceAzure, SourceOci, SourceOther}
 
 // Article は news_articles 行の言語非依存部分を表すドメインエンティティ。
 type Article struct {

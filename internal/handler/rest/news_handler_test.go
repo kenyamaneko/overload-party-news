@@ -55,7 +55,7 @@ func TestList(t *testing.T) {
 			query:        "?lang=en&limit=10",
 			repoReturn:   successRows,
 			wantStatus:   http.StatusOK,
-			wantArticles: []apinews.NewsListItem{{ArticleID: "01A", Source: "aws", Title: "T", Summary: "S", Tags: []string{"compute"}, PublishedAt: pub}},
+			wantArticles: []apinews.NewsListItem{{ArticleID: "01A", Source: apinews.SourceAws, Title: "T", Summary: "S", Tags: []string{"compute"}, PublishedAt: pub}},
 			wantLang:     "en",
 		},
 		{
@@ -128,13 +128,13 @@ func TestGetDetail(t *testing.T) {
 	otherErr := errors.New("db lost")
 	pub := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	successRow := &domain.PublishedArticleDetail{
-		ArticleID: "01", Source: "oci", Title: "T", Summary: "S",
+		ArticleID: "01", Source: domain.SourceOci, Title: "T", Summary: "S",
 		Body: "本文", Tags: []string{"ai"},
 		SourceURL:   "https://example.com/a",
 		PublishedAt: pub,
 	}
 	wantSuccess := apinews.NewsDetail{
-		ArticleID: "01", Source: "oci", Title: "T", Summary: "S",
+		ArticleID: "01", Source: apinews.SourceOci, Title: "T", Summary: "S",
 		Body: "本文", Tags: []string{"ai"},
 		SourceURL:   "https://example.com/a",
 		PublishedAt: pub,

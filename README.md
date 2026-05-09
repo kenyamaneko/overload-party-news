@@ -2,7 +2,7 @@
 
 クラウドニュース記事の校閲・配信を行う内部マイクロサービス。`news-article-collected` Pub/Sub イベントを購読して自スキーマに永続化し、運用者が管理 UI で校閲した後に gateway 経由でクライアントへ配信する。gateway 向け REST は ClusterIP ポート 9008、管理 UI は IAP 背後のポート 9108 で起動する。
 
-詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [API仕様書](docs/API_REFERENCE.md) / [データ設計書](docs/DATA_DESIGN.md) を参照。
+詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [REST 契約](data/openapi.yaml) / [Pub/Sub 契約](data/asyncapi.yaml) / [データ設計書](docs/DATA_DESIGN.md) を参照。
 
 ## アーキテクチャ概要
 
@@ -34,8 +34,10 @@ make db-reset # volume ごと削除して再作成
 
 ## 公開パッケージ
 
-[packages/api-news/](packages/api-news/) に REST 契約型を公開している。[data/models.yaml](data/models.yaml) を編集後に以下で再生成する。
+[packages/api-news/](packages/api-news/) に REST / Pub/Sub 契約型を公開している。
+SSoT は [data/openapi.yaml](data/openapi.yaml) (REST) と [data/asyncapi.yaml](data/asyncapi.yaml) (Pub/Sub)。
+spec を編集後に以下で `oapi-codegen` + `asyncapi-codegen` を呼び出して再生成する。
 
 ```bash
-python3 scripts/generate_types.py
+scripts/generate_types.sh
 ```

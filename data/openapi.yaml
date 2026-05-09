@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: overload-party-news
+  version: 0.1.0
+  description: |
+    News service の REST 契約 (gateway → news の internal API)。
+    本ファイルが SSoT。`packages/api-news` の Go 型は oapi-codegen が本ファイルから生成する。
+    管理 UI (/admin/*) は HTML を返す内部 UI のため本仕様には含めない。
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: サービス死活監視
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /internal/v1/news:
+    get:
+      operationId: listNews
+      summary: 指定言語で公開中のニュース記事一覧を返す (直近順)
+      parameters:
+        - $ref: "#/components/parameters/LangQuery"
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: 取得件数 (1-100)。未指定・範囲外は 400。
+      responses:
+        "200":
+          description: 記事一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsListResponse"
+        "400":
+          description: lang 未指定 / 対応外 / limit 不正
+        "500":
+          description: DB エラー
+
+  /internal/v1/news/{articleId}:
+    get:
+      operationId: getNewsDetail
+      summary: 指定言語で公開中のニュース記事詳細を返す
+      parameters:
+        - name: articleId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ULID。
+        - $ref: "#/components/parameters/LangQuery"
+      responses:
+        "200":
+          description: 記事詳細
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsDetail"
+        "400":
+          description: lang 未指定 / 対応外
+        "404":
+          description: 記事が存在しない / 公開中でない / 指定 lang の翻訳が存在しない
+        "500":
+          description: DB エラー
+
+components:
+  parameters:
+    LangQuery:
+      name: lang
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/Lang"
+      description: 翻訳言語。未指定・対応外は 400。
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    NewsListResponse:
+      type: object
+      required: [articles]
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: "#/components/schemas/NewsListItem"
+
+    NewsListItem:
+      type: object
+      description: |
+        一覧レスポンス要素。title / summary は指定 lang の翻訳由来。body / source_url は含まない。
+      required: [article_id, source, title, summary, tags, published_at]
+      properties:
+        article_id:
+          type: string
+          x-go-name: ArticleID
+          description: ULID。
+        source:
+          $ref: "#/components/schemas/Source"
+        title:
+          type: string
+        summary:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        source_published_at:
+          type: string
+          format: date-time
+          description: 元記事 (RSS 由来) の公開日時。nullable。
+        published_at:
+          type: string
+          format: date-time
+          description: アプリ内で公開された日時 (承認時刻)。公開中記事では必ず値を持つ。
+
+    NewsDetail:
+      type: object
+      description: |
+        詳細レスポンス。title / summary / body は指定 lang の翻訳由来。
+      required: [article_id, source, title, summary, body, tags, source_url, published_at]
+      properties:
+        article_id:
+          type: string
+          x-go-name: ArticleID
+        source:
+          $ref: "#/components/schemas/Source"
+        title:
+          type: string
+        summary:
+          type: string
+        body:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        source_url:
+          type: string
+          x-go-name: SourceURL
+        source_published_at:
+          type: string
+          format: date-time
+          description: 元記事 RSS 由来。nullable。
+        published_at:
+          type: string
+          format: date-time
+
+    Lang:
+      type: string
+      description: 対応言語コード。SSoT は news 内の domain.SupportedLangs。
+      enum:
+        - ja
+        - en
+
+    Source:
+      type: string
+      description: |
+        記事のソース種別。SSoT は newsfeed 側の cloud_news_sources。
+        news 側では永続化と公開 API で同値を引き継ぐ。
+      enum:
+        - aws
+        - google-cloud
+        - azure
+        - oci
+        - other

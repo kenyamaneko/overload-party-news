@@ -1,0 +1,86 @@
+asyncapi: 3.0.0
+info:
+  title: overload-party-news events
+  version: 0.1.0
+  description: |
+    News service が購読する Pub/Sub イベントの契約。
+    本ファイルが SSoT。`packages/api-news` の event 型は asyncapi-codegen が本ファイルから生成する。
+    Topic 名 (物理 channel) は overload-party-infra (Terraform) が SSoT であり、本仕様には書かない。
+    アプリは ConfigMap 由来の env var (NEWS_ARTICLE_COLLECTED_SUBSCRIPTION) で物理 subscription を解決する。
+
+channels:
+  ArticleCollected:
+    address: news-article-collected
+    description: |
+      newsfeed が RSS 取得・要約生成を完了した記事を 1 件ずつ通知する論理チャネル。
+      物理 topic 名は publisher (newsfeed) と subscriber (news) で同名運用。
+      news は env NEWS_ARTICLE_COLLECTED_SUBSCRIPTION で物理 subscription を解決する。
+    messages:
+      ArticleCollectedEvent:
+        $ref: "#/components/messages/ArticleCollectedEvent"
+
+operations:
+  receiveArticleCollected:
+    action: receive
+    channel:
+      $ref: "#/channels/ArticleCollected"
+    summary: |
+      newsfeed 発行の記事収集完了イベントを受信し news スキーマへ永続化する。
+      MVP では translations は ja 1 件ちょうど。重複配送は ArticleID で吸収する (at-least-once)。
+
+components:
+  messages:
+    ArticleCollectedEvent:
+      name: ArticleCollectedEvent
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ArticleCollectedEvent"
+
+  schemas:
+    ArticleCollectedEvent:
+      type: object
+      description: |
+        newsfeed が記事 1 件分の収集と翻訳生成を完了した際に発行するイベント。
+        subscriber: news (news_articles + news_article_translations を同一 tx で永続化)。
+        ArticleID で冪等性を担保する (at-least-once)。
+      required: [article_id, source, source_url, tags, translations]
+      properties:
+        article_id:
+          type: string
+          x-go-name: ArticleID
+          description: newsfeed が採番する ULID。news 側で PK として引き継ぐ。
+        source:
+          type: string
+          description: ソース種別 (aws / google-cloud / azure / oci / other)。SSoT は newsfeed。
+        source_url:
+          type: string
+          x-go-name: SourceURL
+          description: 元記事 URL。news 側で UNIQUE 制約。
+        tags:
+          type: array
+          items:
+            type: string
+        source_published_at:
+          type: string
+          format: date-time
+          description: 元記事 RSS 由来の公開日時。nullable。
+        translations:
+          type: array
+          description: 翻訳エントリ。MVP では ja 1 件ちょうど。
+          items:
+            $ref: "#/components/schemas/EventTranslation"
+
+    EventTranslation:
+      type: object
+      required: [lang, title, summary, body]
+      properties:
+        lang:
+          type: string
+          description: 言語コード (ja / en)。
+        title:
+          type: string
+        summary:
+          type: string
+          description: Vertex AI 生成 (ja MVP)。
+        body:
+          type: string

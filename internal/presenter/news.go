@@ -9,7 +9,7 @@ import (
 func ToNewsListItem(s domain.PublishedArticleSummary) apinews.NewsListItem {
 	return apinews.NewsListItem{
 		ArticleID:         s.ArticleID,
-		Source:            s.Source,
+		Source:            apinews.Source(s.Source),
 		Title:             s.Title,
 		Summary:           s.Summary,
 		Tags:              s.Tags,
@@ -31,7 +31,7 @@ func ToNewsListItems(rows []domain.PublishedArticleSummary) []apinews.NewsListIt
 func ToNewsDetail(d *domain.PublishedArticleDetail) *apinews.NewsDetail {
 	return &apinews.NewsDetail{
 		ArticleID:         d.ArticleID,
-		Source:            d.Source,
+		Source:            apinews.Source(d.Source),
 		Title:             d.Title,
 		Summary:           d.Summary,
 		Body:              d.Body,
