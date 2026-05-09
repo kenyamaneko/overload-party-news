@@ -9,6 +9,7 @@ import (
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/presenter"
+	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
 func TestToNewsListItem(t *testing.T) {
@@ -27,7 +28,7 @@ func TestToNewsListItem(t *testing.T) {
 	got := presenter.ToNewsListItem(in)
 
 	assert.Equal(t, "abc", got.ArticleID)
-	assert.Equal(t, "aws", got.Source)
+	assert.Equal(t, apinews.SourceAws, got.Source)
 	assert.Equal(t, "T", got.Title)
 	assert.Equal(t, "S", got.Summary)
 	assert.Equal(t, []string{"x", "y"}, got.Tags)
@@ -73,7 +74,7 @@ func TestToNewsDetail(t *testing.T) {
 	got := presenter.ToNewsDetail(in)
 
 	assert.Equal(t, "abc", got.ArticleID)
-	assert.Equal(t, "aws", got.Source)
+	assert.Equal(t, apinews.SourceAws, got.Source)
 	assert.Equal(t, "T", got.Title)
 	assert.Equal(t, "S", got.Summary)
 	assert.Equal(t, "B", got.Body)

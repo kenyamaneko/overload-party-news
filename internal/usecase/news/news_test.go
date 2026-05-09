@@ -102,7 +102,7 @@ func TestGetDetail(t *testing.T) {
 		PublishedAt: pub,
 	}
 	wantSuccess := &apinews.NewsDetail{
-		ArticleID: "abc", Source: "aws", Title: "T", Summary: "S",
+		ArticleID: "abc", Source: apinews.SourceAws, Title: "T", Summary: "S",
 		Body: "B", Tags: []string{"x"}, SourceURL: "https://example.com/abc",
 		PublishedAt: pub,
 	}

@@ -4,7 +4,8 @@
 
 関連ドキュメント:
 - 内部動作・配線・本番運用設定: [ARCHITECTURE.md](ARCHITECTURE.md)
-- HTTP エンドポイント契約: [API_REFERENCE.md](API_REFERENCE.md)
+- HTTP エンドポイント契約: [../data/openapi.yaml](../data/openapi.yaml)
+- Pub/Sub イベント契約: [../data/asyncapi.yaml](../data/asyncapi.yaml)
 - DB スキーマ: [DATA_DESIGN.md](DATA_DESIGN.md)
 
 ---
