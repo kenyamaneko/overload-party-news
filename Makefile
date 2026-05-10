@@ -38,6 +38,7 @@ run: db-up ## Run news server locally against compose Postgres (local env 込み
 	GOOGLE_CLOUD_PROJECT=news-local \
 	NEWS_ARTICLE_COLLECTED_SUBSCRIPTION=news-article-collected-news-sub \
 	PUBSUB_EMULATOR_HOST=localhost:8085 \
+	INTERNAL_AUTH_SECRET=dev-secret-not-for-prod \
 	go run ./cmd/server
 
 help: ## Show this help

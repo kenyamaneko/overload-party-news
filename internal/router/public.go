@@ -8,19 +8,22 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
+	"github.com/kenyamaneko/overload-party-news/internal/port"
 )
 
-// NewInternal は gateway 向け内部 REST API のルータを構築する。news 側では追加認証を行わない (gateway で完了済前提)。
-func NewInternal(newsH *rest.NewsHandler) *gin.Engine {
+// NewPublic は gateway 経由の公開 REST API ルータを構築する。
+// /api/v1/news/* は X-Internal-Auth (HMAC JWT) を必須とし、
+// middleware が sub クレームを context に注入する。
+func NewPublic(newsH *rest.NewsHandler, authVerifier port.InternalAuthVerifier) *gin.Engine {
 	r := gin.New()
 	r.Use(requestLogger(), gin.Recovery())
 
 	r.GET("/health", healthHandler)
 
-	v1 := r.Group("/internal/v1")
+	api := r.Group("/api/v1/news", rest.VerifyInternalAuth(authVerifier))
 	{
-		v1.GET("/news", newsH.List)
-		v1.GET("/news/:articleId", newsH.GetDetail)
+		api.GET("", newsH.List)
+		api.GET("/:articleId", newsH.GetDetail)
 	}
 	return r
 }

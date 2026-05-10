@@ -23,8 +23,8 @@ import (
 func newEngine(h *rest.NewsHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/internal/v1/news", h.List)
-	r.GET("/internal/v1/news/:articleId", h.GetDetail)
+	r.GET("/api/v1/news", h.List)
+	r.GET("/api/v1/news/:articleId", h.GetDetail)
 	return r
 }
 
@@ -106,7 +106,7 @@ func TestList(t *testing.T) {
 			}
 			h := rest.NewNewsHandler(news.New(repo))
 
-			req := httptest.NewRequest(http.MethodGet, "/internal/v1/news"+tc.query, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/news"+tc.query, nil)
 			w := httptest.NewRecorder()
 			newEngine(h).ServeHTTP(w, req)
 
@@ -194,7 +194,7 @@ func TestGetDetail(t *testing.T) {
 			}
 			h := rest.NewNewsHandler(news.New(repo))
 
-			req := httptest.NewRequest(http.MethodGet, "/internal/v1/news/01"+tc.query, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/news/01"+tc.query, nil)
 			w := httptest.NewRecorder()
 			newEngine(h).ServeHTTP(w, req)
 

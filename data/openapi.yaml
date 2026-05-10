@@ -3,8 +3,9 @@ info:
   title: overload-party-news
   version: 0.1.0
   description: |
-    News service の REST 契約 (gateway → news の internal API)。
-    本ファイルが SSoT。`packages/api-news` の Go 型は oapi-codegen が本ファイルから生成する。
+    News service の REST 契約 (gateway → news の公開 API)。
+    本ファイルが SSoT。`packages/api-news` の Go 型と `packages/api-news-npm` の TypeScript 型を本ファイルから生成する。
+    `/api/v1/news/*` は X-Internal-Auth (HMAC JWT) で認証し、player_id は sub クレームから解決する。
     管理 UI (/admin/*) は HTML を返す内部 UI のため本仕様には含めない。
 
 paths:
@@ -20,10 +21,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
-  /internal/v1/news:
+  /api/v1/news:
     get:
       operationId: listNews
       summary: 指定言語で公開中のニュース記事一覧を返す (直近順)
+      security:
+        - InternalAuth: []
       parameters:
         - $ref: "#/components/parameters/LangQuery"
         - name: limit
@@ -43,13 +46,17 @@ paths:
                 $ref: "#/components/schemas/NewsListResponse"
         "400":
           description: lang 未指定 / 対応外 / limit 不正
+        "401":
+          description: 認証失敗
         "500":
           description: DB エラー
 
-  /internal/v1/news/{articleId}:
+  /api/v1/news/{articleId}:
     get:
       operationId: getNewsDetail
       summary: 指定言語で公開中のニュース記事詳細を返す
+      security:
+        - InternalAuth: []
       parameters:
         - name: articleId
           in: path
@@ -67,12 +74,21 @@ paths:
                 $ref: "#/components/schemas/NewsDetail"
         "400":
           description: lang 未指定 / 対応外
+        "401":
+          description: 認証失敗
         "404":
           description: 記事が存在しない / 公開中でない / 指定 lang の翻訳が存在しない
         "500":
           description: DB エラー
 
 components:
+  securitySchemes:
+    InternalAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Auth
+      description: gateway が発行する HS256 JWT。sub クレームに player_id を含む。
+
   parameters:
     LangQuery:
       name: lang

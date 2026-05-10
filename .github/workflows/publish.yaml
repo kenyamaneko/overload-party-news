@@ -1,0 +1,109 @@
+name: Publish
+
+# api-news (Go module) と api-news-npm (Cloudsmith npm) を手動でタグ付け・公開する。
+# バージョンを上げるタイミングは人が判断して workflow_dispatch で実行する。
+# タグの手動打ちは禁止 — このワークフローがモジュールタグの唯一の発行元。
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Package to publish"
+        required: true
+        default: "api-news"
+        type: choice
+        options:
+          - api-news
+          - api-news-npm
+      bump:
+        description: "Version bump level"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish-api-news:
+    if: inputs.target == 'api-news'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/api-news/go.mod
+
+      - name: Vet api-news
+        run: go vet ./...
+        working-directory: packages/api-news
+
+      - name: Build api-news
+        run: go build ./...
+        working-directory: packages/api-news
+
+      - name: Determine next tag
+        id: tag
+        env:
+          PREFIX: packages/api-news/v
+          BUMP: ${{ inputs.bump }}
+        run: .github/scripts/publish/next-tag.sh
+
+      - name: Tag and push
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: .github/scripts/publish/tag-and-push.sh
+
+  publish-api-news-npm:
+    if: inputs.target == 'api-news-npm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Determine next tag
+        id: tag
+        env:
+          PREFIX: packages/api-news-npm/v
+          BUMP: ${{ inputs.bump }}
+        run: .github/scripts/publish/next-tag.sh
+
+      - name: Build & version npm package
+        working-directory: packages/api-news-npm
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: ../../.github/scripts/publish/build-npm.sh
+
+      - name: Publish to Cloudsmith
+        uses: kenyamaneko/overload-party-common/.github/actions/publish-to-cloudsmith@main
+        with:
+          format: npm
+          package-path: packages/api-news-npm
+
+      - name: Tag and push
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: .github/scripts/publish/tag-and-push.sh
