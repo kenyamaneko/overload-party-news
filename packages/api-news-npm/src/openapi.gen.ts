@@ -66,8 +66,7 @@ export interface components {
         NewsListResponse: {
             articles: components["schemas"]["NewsListItem"][];
         };
-        /** @description 一覧レスポンス要素。title / summary は指定 lang の翻訳由来。body / source_url は含まない。
-         *      */
+        /** @description 一覧レスポンス要素。title / summary は指定 lang の翻訳由来。body / source_url は含まない。 */
         NewsListItem: {
             /** @description ULID。 */
             article_id: string;
@@ -86,8 +85,7 @@ export interface components {
              */
             published_at: string;
         };
-        /** @description 詳細レスポンス。title / summary / body は指定 lang の翻訳由来。
-         *      */
+        /** @description 詳細レスポンス。title / summary / body は指定 lang の翻訳由来。 */
         NewsDetail: {
             article_id: string;
             source: components["schemas"]["Source"];
@@ -112,7 +110,6 @@ export interface components {
         /**
          * @description 記事のソース種別。SSoT は newsfeed 側の cloud_news_sources。
          *     news 側では永続化と公開 API で同値を引き継ぐ。
-         *
          * @enum {string}
          */
         Source: "aws" | "google-cloud" | "azure" | "oci" | "other";

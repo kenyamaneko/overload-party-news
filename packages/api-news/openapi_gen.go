@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+const (
+	InternalAuthScopes internalAuthContextKey = "InternalAuth.Scopes"
+)
+
 // Defines values for Lang.
 const (
 	LangEn Lang = "en"
@@ -108,6 +112,9 @@ type Source string
 
 // LangQuery 対応言語コード。SSoT は news 内の domain.SupportedLangs。
 type LangQuery = Lang
+
+// internalAuthContextKey is the context key for InternalAuth security scheme
+type internalAuthContextKey string
 
 // ListNewsParams defines parameters for ListNews.
 type ListNewsParams struct {
