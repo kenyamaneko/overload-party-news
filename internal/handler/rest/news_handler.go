@@ -20,7 +20,7 @@ func NewNewsHandler(uc *news.Interactor) *NewsHandler {
 	return &NewsHandler{uc: uc}
 }
 
-// List は GET /internal/v1/news。lang / limit いずれも未指定または不正値は 400。
+// List は GET /api/v1/news。lang / limit いずれも未指定または不正値は 400。
 func (h *NewsHandler) List(c *gin.Context) {
 	lang := c.Query("lang")
 	limit, err := parseLimit(c.Query("limit"))
@@ -40,7 +40,7 @@ func (h *NewsHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, apinews.NewsListResponse{Articles: items})
 }
 
-// GetDetail は GET /internal/v1/news/:articleId。非公開 / 非存在 / 当該 lang 翻訳なしは 404。
+// GetDetail は GET /api/v1/news/:articleId。非公開 / 非存在 / 当該 lang 翻訳なしは 404。
 func (h *NewsHandler) GetDetail(c *gin.Context) {
 	articleID := c.Param("articleId")
 	lang := c.Query("lang")

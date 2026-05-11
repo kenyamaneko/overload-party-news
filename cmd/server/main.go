@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/kenyamaneko/overload-party-news/internal/adapter/internalauth"
 	"github.com/kenyamaneko/overload-party-news/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-news/internal/config"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
@@ -74,9 +75,13 @@ func run() error {
 		}
 	}()
 
-	internalSrv := &http.Server{
+	authVerifier := internalauth.NewVerifier(
+		internalauth.StaticHS256Resolver([]byte(cfg.InternalAuthSecret), internalauth.DefaultKeyID),
+	)
+
+	publicSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.InternalPort),
-		Handler:           router.NewInternal(newsH),
+		Handler:           router.NewPublic(newsH, authVerifier),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	adminSrv := &http.Server{
@@ -86,14 +91,14 @@ func run() error {
 	}
 
 	slog.Info("listening",
-		"internal_addr", internalSrv.Addr,
+		"public_addr", publicSrv.Addr,
 		"admin_addr", adminSrv.Addr,
 		"env", cfg.Env,
 		"cloud_project", cfg.GoogleCloudProject,
 		"subscription", cfg.NewsArticleCollectedSubscription,
 	)
 
-	return runAll(ctx, internalSrv, adminSrv, stream, subscriberH.Handle)
+	return runAll(ctx, publicSrv, adminSrv, stream, subscriberH.Handle)
 }
 
 // setupLogger は env に応じて slog のハンドラを設定する。
@@ -140,12 +145,12 @@ func newCloudLoggingHandler() slog.Handler {
 
 // runAll は 2 つの HTTP server と Pub/Sub stream を並行起動し、
 // いずれかの失敗・シグナルで全員を停止させる。
-func runAll(ctx context.Context, internalSrv, adminSrv *http.Server, stream *pubsub.Stream, handle port.MessageHandler) error {
+func runAll(ctx context.Context, publicSrv, adminSrv *http.Server, stream *pubsub.Stream, handle port.MessageHandler) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			return fmt.Errorf("internal http server: %w", err)
+		if err := publicSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("public http server: %w", err)
 		}
 		return nil
 	})
@@ -164,8 +169,8 @@ func runAll(ctx context.Context, internalSrv, adminSrv *http.Server, stream *pub
 		slog.Info("shutdown requested")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := internalSrv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("internal http shutdown: %w", err)
+		if err := publicSrv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("public http shutdown: %w", err)
 		}
 		if err := adminSrv.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("admin http shutdown: %w", err)

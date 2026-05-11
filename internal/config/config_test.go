@@ -17,6 +17,7 @@ var envKeys = []string{
 	"DATABASE_CONN",
 	"GOOGLE_CLOUD_PROJECT",
 	"NEWS_ARTICLE_COLLECTED_SUBSCRIPTION",
+	"INTERNAL_AUTH_SECRET",
 }
 
 func validEnv() map[string]string {
@@ -27,6 +28,7 @@ func validEnv() map[string]string {
 		"DATABASE_CONN":                       "host=localhost dbname=news",
 		"GOOGLE_CLOUD_PROJECT":                "news-local",
 		"NEWS_ARTICLE_COLLECTED_SUBSCRIPTION": "news-article-collected-news-sub",
+		"INTERNAL_AUTH_SECRET":                "test-internal-auth-secret-do-not-use-in-prod",
 	}
 }
 
@@ -101,6 +103,11 @@ func TestFromEnv_Validation(t *testing.T) {
 			mutate:  func(m map[string]string) { delete(m, "NEWS_ARTICLE_COLLECTED_SUBSCRIPTION") },
 			wantErr: true,
 		},
+		{
+			name:    "INTERNAL_AUTH_SECRET 欠け",
+			mutate:  func(m map[string]string) { delete(m, "INTERNAL_AUTH_SECRET") },
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -125,6 +132,7 @@ func TestFromEnv_Mapping(t *testing.T) {
 		"DATABASE_CONN":                       "host=db dbname=news user=n password=p sslmode=disable",
 		"GOOGLE_CLOUD_PROJECT":                "proj-42",
 		"NEWS_ARTICLE_COLLECTED_SUBSCRIPTION": "sub-name",
+		"INTERNAL_AUTH_SECRET":                "secret-xyz",
 	}
 	applyEnv(t, m)
 
@@ -137,6 +145,7 @@ func TestFromEnv_Mapping(t *testing.T) {
 	assert.Equal(t, m["DATABASE_CONN"], cfg.DatabaseConn)
 	assert.Equal(t, m["GOOGLE_CLOUD_PROJECT"], cfg.GoogleCloudProject)
 	assert.Equal(t, m["NEWS_ARTICLE_COLLECTED_SUBSCRIPTION"], cfg.NewsArticleCollectedSubscription)
+	assert.Equal(t, m["INTERNAL_AUTH_SECRET"], cfg.InternalAuthSecret)
 }
 
 // applyEnv は対象 env をいったん空にしてから m の値を設定する。
