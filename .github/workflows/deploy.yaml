@@ -1,0 +1,96 @@
+name: Deploy
+
+# ブランチごとに対応環境の Artifact Registry へイメージを build & push する。
+#   main     → prod
+#   release/ → stg
+#   develop  → dev
+# CI (ci.yaml) の成功はブランチ保護の required status check で担保する。
+# 脆弱性スキャンは CI 側の image-scan ジョブで実施済み。
+on:
+  push:
+    branches: [main, develop, "release/**"]
+
+permissions:
+  contents: read
+  # Workload Identity Federation で Google Cloud に認証するために OIDC トークンの発行権限が必要
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  # deploy 中断による half-deploy リスクを避けるため cancel しない
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: keyandnotes-platform
+  REGISTRY: asia-northeast1-docker.pkg.dev
+  REPOSITORY: overload-party
+  IMAGE_NAME: news
+
+jobs:
+  resolve-env:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+    outputs:
+      env_name: ${{ steps.resolve.outputs.env_name }}
+    steps:
+      # スクリプトだけ必要なので sparse-checkout でチェックアウトを高速化する
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Resolve environment from branch
+        id: resolve
+        run: .github/scripts/deploy/resolve-env.sh
+
+  push-image:
+    needs: [resolve-env]
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 30
+    # GitHub Environments の保護ルール (approvers 等) を適用するために environment を宣言する
+    environment: ${{ needs.resolve-env.outputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Set image tags
+        id: tags
+        env:
+          ENV_NAME: ${{ needs.resolve-env.outputs.env_name }}
+        run: .github/scripts/deploy/set-image-tags.sh
+
+      - name: Generate Cross-Repo Deps App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
+          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
+          owner: kenyamaneko
+
+      - name: Build image
+        env:
+          DOCKER_BUILDKIT: "1"
+          GO_MODULES_TOKEN: ${{ steps.app-token.outputs.token }}
+          IMAGE: ${{ steps.tags.outputs.image }}
+          SHA_TAG: ${{ steps.tags.outputs.sha_tag }}
+          LATEST_TAG: ${{ steps.tags.outputs.latest_tag }}
+        run: .github/scripts/deploy/build-image.sh
+
+      - name: Push image
+        env:
+          IMAGE: ${{ steps.tags.outputs.image }}
+          SHA_TAG: ${{ steps.tags.outputs.sha_tag }}
+          LATEST_TAG: ${{ steps.tags.outputs.latest_tag }}
+        run: .github/scripts/deploy/push-image.sh
