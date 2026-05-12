@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/kenyamaneko/overload-party-news/internal/adapter/internalauth"
 	"github.com/kenyamaneko/overload-party-news/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-news/internal/config"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"

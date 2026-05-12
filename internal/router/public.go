@@ -6,21 +6,21 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
-	"github.com/kenyamaneko/overload-party-news/internal/port"
 )
 
 // NewPublic は gateway 経由の公開 REST API ルータを構築する。
 // /api/v1/news/* は X-Internal-Auth (HMAC JWT) を必須とし、
 // middleware が sub クレームを context に注入する。
-func NewPublic(newsH *rest.NewsHandler, authVerifier port.InternalAuthVerifier) *gin.Engine {
+func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier) *gin.Engine {
 	r := gin.New()
 	r.Use(requestLogger(), gin.Recovery())
 
 	r.GET("/health", healthHandler)
 
-	api := r.Group("/api/v1/news", rest.VerifyInternalAuth(authVerifier))
+	api := r.Group("/api/v1/news", internalauth.VerifyInternalAuth(authVerifier))
 	{
 		api.GET("", newsH.List)
 		api.GET("/:articleId", newsH.GetDetail)
