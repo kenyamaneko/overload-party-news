@@ -34,9 +34,6 @@ func (h *NewsHandler) List(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	if items == nil {
-		items = []apinews.NewsListItem{}
-	}
 	c.JSON(http.StatusOK, apinews.NewsListResponse{Articles: items})
 }
 

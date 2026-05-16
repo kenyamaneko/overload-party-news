@@ -113,12 +113,9 @@ func TestList(t *testing.T) {
 			assert.Equal(t, tc.wantStatus, w.Code)
 			assert.Equal(t, tc.wantLang, gotLang)
 
-			if tc.wantStatus != http.StatusOK {
-				return
-			}
 			var resp apinews.NewsListResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-			assert.NotNil(t, resp.Articles, "0 件でも nil ではなく空配列")
+			// wantArticles が空配列のケースは nil でないこと (0 件でも null を返さない仕様) も検証する。
 			assert.Equal(t, tc.wantArticles, resp.Articles)
 		})
 	}
@@ -146,7 +143,7 @@ func TestGetDetail(t *testing.T) {
 		repoReturn *domain.PublishedArticleDetail
 		repoErr    error
 		wantStatus int
-		wantBody   *apinews.NewsDetail
+		wantBody   apinews.NewsDetail
 		wantLang   string
 	}{
 		{
@@ -154,7 +151,7 @@ func TestGetDetail(t *testing.T) {
 			query:      "?lang=ja",
 			repoReturn: successRow,
 			wantStatus: http.StatusOK,
-			wantBody:   &wantSuccess,
+			wantBody:   wantSuccess,
 			wantLang:   "ja",
 		},
 		{
@@ -201,12 +198,10 @@ func TestGetDetail(t *testing.T) {
 			assert.Equal(t, tc.wantStatus, w.Code)
 			assert.Equal(t, tc.wantLang, gotLang)
 
-			if tc.wantBody == nil {
-				return
-			}
+			// エラーケースは wantBody がゼロ値、レスポンスボディも NewsDetail として空に解釈される。
 			var got apinews.NewsDetail
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-			assert.Equal(t, *tc.wantBody, got)
+			assert.Equal(t, tc.wantBody, got)
 		})
 	}
 }
