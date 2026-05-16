@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 )
 
@@ -48,9 +50,7 @@ func TestDeriveStatus(t *testing.T) {
 				ReviewedAt:  tc.reviewedAt,
 				PublishedAt: tc.publishedAt,
 			})
-			if got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

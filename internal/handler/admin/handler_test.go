@@ -117,7 +117,6 @@ func TestList(t *testing.T) {
 		wantBodyHas []string
 		wantPubBtn  bool
 		wantRejBtn  bool
-		checkBtns   bool
 	}{
 		// status クエリ受理範囲
 		{
@@ -160,13 +159,15 @@ func TestList(t *testing.T) {
 			query:      "?limit=xxx",
 			wantStatus: http.StatusBadRequest,
 		},
-		// ja タイトル表示
+		// ja タイトル表示 (pending 記事なので承認/却下ボタンは両方表示される)
 		{
 			name:        "ja 翻訳ありは ja タイトルが表示される",
 			query:       "?limit=50",
 			stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangJa, Title: "ja-title"}}}},
 			wantStatus:  http.StatusOK,
 			wantBodyHas: []string{"ja-title"},
+			wantPubBtn:  true,
+			wantRejBtn:  true,
 		},
 		{
 			name:        "en のみのとき [ja 未作成] プレースホルダ",
@@ -174,6 +175,8 @@ func TestList(t *testing.T) {
 			stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangEn, Title: "en-title"}}}},
 			wantStatus:  http.StatusOK,
 			wantBodyHas: []string{"[ja 未作成]"},
+			wantPubBtn:  true,
+			wantRejBtn:  true,
 		},
 		{
 			name:        "翻訳なしのとき [ja 未作成] プレースホルダ",
@@ -181,6 +184,8 @@ func TestList(t *testing.T) {
 			stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending)}},
 			wantStatus:  http.StatusOK,
 			wantBodyHas: []string{"[ja 未作成]"},
+			wantPubBtn:  true,
+			wantRejBtn:  true,
 		},
 		// status に応じたボタン表示 (FEATURE_SPEC)
 		{
@@ -190,7 +195,6 @@ func TestList(t *testing.T) {
 			wantStatus: http.StatusOK,
 			wantPubBtn: true,
 			wantRejBtn: true,
-			checkBtns:  true,
 		},
 		{
 			name:       "published は却下ボタンのみ",
@@ -199,7 +203,6 @@ func TestList(t *testing.T) {
 			wantStatus: http.StatusOK,
 			wantPubBtn: false,
 			wantRejBtn: true,
-			checkBtns:  true,
 		},
 		{
 			name:       "rejected は承認ボタンのみ",
@@ -208,7 +211,6 @@ func TestList(t *testing.T) {
 			wantStatus: http.StatusOK,
 			wantPubBtn: true,
 			wantRejBtn: false,
-			checkBtns:  true,
 		},
 	}
 
@@ -225,10 +227,8 @@ func TestList(t *testing.T) {
 			for _, s := range tc.wantBodyHas {
 				assert.Contains(t, body, s)
 			}
-			if tc.checkBtns {
-				assert.Equal(t, tc.wantPubBtn, strings.Contains(body, `/publish"`), "承認ボタンの存在")
-				assert.Equal(t, tc.wantRejBtn, strings.Contains(body, `/reject"`), "却下ボタンの存在")
-			}
+			assert.Equal(t, tc.wantPubBtn, strings.Contains(body, `/publish"`), "承認ボタンの存在")
+			assert.Equal(t, tc.wantRejBtn, strings.Contains(body, `/reject"`), "却下ボタンの存在")
 		})
 	}
 }
@@ -290,6 +290,11 @@ func TestGetEdit(t *testing.T) {
 	}
 }
 
+// upsertArgs は UpsertTranslation がリポジトリへ転送した引数を捕捉する。
+type upsertArgs struct {
+	articleID, lang, title, summary, body string
+}
+
 func TestUpsertTranslation(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -302,6 +307,7 @@ func TestUpsertTranslation(t *testing.T) {
 		wantStatus   int
 		wantHXHeader string
 		wantLocation string
+		wantUpsert   upsertArgs
 	}{
 		{
 			name:         "HTMX 正常 (ja) は 200 + HX-Redirect で編集画面へ",
@@ -312,6 +318,7 @@ func TestUpsertTranslation(t *testing.T) {
 			extraHeaders: map[string]string{"HX-Request": "true"},
 			wantStatus:   http.StatusOK,
 			wantHXHeader: "/admin/articles/01",
+			wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
 		},
 		{
 			name:         "非 HTMX 正常 (ja) は 303 + Location で編集画面へ",
@@ -321,6 +328,7 @@ func TestUpsertTranslation(t *testing.T) {
 			body:         "新本文",
 			wantStatus:   http.StatusSeeOther,
 			wantLocation: "/admin/articles/01",
+			wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
 		},
 		{
 			name:         "正常 (en)",
@@ -331,6 +339,7 @@ func TestUpsertTranslation(t *testing.T) {
 			extraHeaders: map[string]string{"HX-Request": "true"},
 			wantStatus:   http.StatusOK,
 			wantHXHeader: "/admin/articles/01",
+			wantUpsert:   upsertArgs{articleID: "01", lang: "en", title: "t", summary: "s", body: "b"},
 		},
 		{
 			name:         "空 title は 400",
@@ -368,13 +377,17 @@ func TestUpsertTranslation(t *testing.T) {
 			extraHeaders: map[string]string{"HX-Request": "true"},
 			repoErr:      fmt.Errorf("lang=%q: %w", "fr", port.ErrInvalidPersistedValue),
 			wantStatus:   http.StatusBadRequest,
+			// usecase バリデーションは通過し lang はリポジトリ (DB CHECK) まで届く。
+			wantUpsert: upsertArgs{articleID: "01", lang: "fr", title: "t", summary: "s", body: "b"},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			var gotUpsert upsertArgs
 			repo := &port.MockNewsRepo{
-				UpsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
+				UpsertTranslationFn: func(_ context.Context, articleID, lang, title, summary, body string) error {
+					gotUpsert = upsertArgs{articleID, lang, title, summary, body}
 					return tc.repoErr
 				},
 			}
@@ -390,6 +403,8 @@ func TestUpsertTranslation(t *testing.T) {
 			assert.Equal(t, tc.wantStatus, w.Code)
 			assert.Equal(t, tc.wantHXHeader, w.Header().Get("HX-Redirect"))
 			assert.Equal(t, tc.wantLocation, w.Header().Get("Location"))
+			// バリデーション 400 ケースは writer 未到達のため wantUpsert はゼロ値。
+			assert.Equal(t, tc.wantUpsert, gotUpsert)
 		})
 	}
 }
@@ -446,9 +461,8 @@ func TestPublish(t *testing.T) {
 
 			assert.Equal(t, tc.wantStatus, w.Code)
 			assert.Equal(t, tc.wantHXRedir, w.Header().Get("HX-Redirect"))
-			if tc.wantBodyHas != "" {
-				assert.Contains(t, w.Body.String(), tc.wantBodyHas)
-			}
+			// wantBodyHas が空のケースは Contains が常に通過する。
+			assert.Contains(t, w.Body.String(), tc.wantBodyHas)
 		})
 	}
 }
