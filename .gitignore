@@ -8,4 +8,6 @@
 coverage.out
 coverage_*.out
 .vscode/
+go.work
+go.work.sum
 .claude/
