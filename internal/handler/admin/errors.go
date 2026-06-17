@@ -10,8 +10,8 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
-// errorStatus は usecase 層のエラーを HTTP ステータスにマップする。
-func errorStatus(err error) int {
+// deriveErrorStatus は usecase 層のエラーを HTTP ステータスにマップする。
+func deriveErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, port.ErrNotFound):
 		return http.StatusNotFound
@@ -27,5 +27,5 @@ func errorStatus(err error) int {
 // respondError は管理 UI のエラーをテキストで返す。
 // HTMX は 4xx/5xx で hx-swap を抑止するため人間可読なメッセージだけでよい。
 func respondError(c *gin.Context, err error) {
-	c.String(errorStatus(err), "%s", err.Error())
+	c.String(deriveErrorStatus(err), "%s", err.Error())
 }

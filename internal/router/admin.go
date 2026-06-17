@@ -10,11 +10,11 @@ import (
 // NewAdmin は管理 UI のルータを構築する。/admin/* に IAP middleware を適用する (ENV=local はパススルー)。
 func NewAdmin(env config.Env, adminH *admin.Handler) *gin.Engine {
 	r := gin.New()
-	r.Use(requestLogger(), gin.Recovery())
+	r.Use(newRequestLogger(), gin.Recovery())
 
-	r.GET("/health", healthHandler)
+	r.GET("/health", handleHealth)
 
-	adminGroup := r.Group("/admin", admin.AuthMiddleware(env))
+	adminGroup := r.Group("/admin", admin.NewAuthMiddleware(env))
 	{
 		adminGroup.GET("/articles", adminH.List)
 		adminGroup.GET("/articles/:articleId", adminH.GetEdit)

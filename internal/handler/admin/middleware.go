@@ -21,9 +21,9 @@ const localReviewerFallback = "local-dev@example.com"
 // ErrMissingIAPHeader は IAP ヘッダが欠けているときに返す。handler は 401 にマップする。
 var ErrMissingIAPHeader = errors.New("missing IAP authenticated user header")
 
-// AuthMiddleware は IAP ヘッダの存在確認と reviewer の context 注入を行う gin middleware を返す。
+// NewAuthMiddleware は IAP ヘッダの存在確認と reviewer の context 注入を行う gin middleware を返す。
 // ENV=local のときはヘッダ不要で localReviewerFallback を注入する。
-func AuthMiddleware(env config.Env) gin.HandlerFunc {
+func NewAuthMiddleware(env config.Env) gin.HandlerFunc {
 	if env == config.EnvLocal {
 		return func(c *gin.Context) {
 			c.Set(reviewerKey(), localReviewerFallback)

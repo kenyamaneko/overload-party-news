@@ -50,7 +50,7 @@ func TestAuthMiddleware_Production(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			var seenReviewer string
 			r := gin.New()
-			r.Use(admin.AuthMiddleware(config.EnvProduction))
+			r.Use(admin.NewAuthMiddleware(config.EnvProduction))
 			r.GET("/_probe", func(c *gin.Context) {
 				seenReviewer = admin.Reviewer(c)
 				c.Status(http.StatusOK)
@@ -73,7 +73,7 @@ func TestAuthMiddleware_Local(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	var seenReviewer string
 	r := gin.New()
-	r.Use(admin.AuthMiddleware(config.EnvLocal))
+	r.Use(admin.NewAuthMiddleware(config.EnvLocal))
 	r.GET("/_probe", func(c *gin.Context) {
 		seenReviewer = admin.Reviewer(c)
 		c.Status(http.StatusOK)

@@ -16,9 +16,9 @@ import (
 // middleware が sub クレームを context に注入する。
 func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier) *gin.Engine {
 	r := gin.New()
-	r.Use(requestLogger(), gin.Recovery())
+	r.Use(newRequestLogger(), gin.Recovery())
 
-	r.GET("/health", healthHandler)
+	r.GET("/health", handleHealth)
 
 	api := r.Group("/api/v1/news", internalauth.VerifyInternalAuth(authVerifier))
 	{
@@ -28,12 +28,12 @@ func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier) *gin
 	return r
 }
 
-func healthHandler(c *gin.Context) {
+func handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// requestLogger は構造化ログを出力する共通ミドルウェア。
-func requestLogger() gin.HandlerFunc {
+// newRequestLogger は構造化ログを出力する共通ミドルウェアを生成する。
+func newRequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
