@@ -28,6 +28,7 @@ func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier) *gin
 	return r
 }
 
+// handleHealth はヘルスチェック結果を返す gin ハンドラ。
 func handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

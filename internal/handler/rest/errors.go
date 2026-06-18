@@ -24,6 +24,7 @@ func deriveErrorStatus(err error) int {
 	}
 }
 
+// respondError はドメインエラーを HTTP ステータスと JSON エラーボディに変換して返す。
 func respondError(c *gin.Context, err error) {
 	c.JSON(deriveErrorStatus(err), gin.H{"error": err.Error()})
 }
