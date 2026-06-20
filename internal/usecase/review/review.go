@@ -67,7 +67,7 @@ func (uc *Interactor) List(ctx context.Context, statuses []domain.Status, limit 
 	if err != nil {
 		return nil, err
 	}
-	grouped := translationsByArticleID(translations)
+	grouped := groupTranslationsByArticleID(translations)
 	results := make([]domain.ArticleWithTranslations, len(filtered))
 	for i, a := range filtered {
 		results[i] = domain.ArticleWithTranslations{
@@ -95,7 +95,8 @@ func (uc *Interactor) Get(ctx context.Context, articleID string) (*domain.Articl
 	}, nil
 }
 
-func translationsByArticleID(translations []domain.Translation) map[string][]domain.Translation {
+// groupTranslationsByArticleID は翻訳を article_id でグループ化する。
+func groupTranslationsByArticleID(translations []domain.Translation) map[string][]domain.Translation {
 	grouped := make(map[string][]domain.Translation)
 	for _, t := range translations {
 		grouped[t.ArticleID] = append(grouped[t.ArticleID], t)

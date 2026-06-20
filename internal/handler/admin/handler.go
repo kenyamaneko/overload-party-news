@@ -72,16 +72,16 @@ func (h *Handler) List(c *gin.Context) {
 // GetEdit は GET /admin/articles/:articleId。編集フォーム (ja/en タブ付き) のページを返す。
 func (h *Handler) GetEdit(c *gin.Context) {
 	articleID := c.Param("articleId")
-	aw, err := h.uc.Get(c.Request.Context(), articleID)
+	articleWithTranslations, err := h.uc.Get(c.Request.Context(), articleID)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
 	data := gin.H{
-		"Title":        headerTitle(aw),
+		"Title":        deriveHeaderTitle(articleWithTranslations),
 		"Reviewer":     Reviewer(c),
-		"Article":      aw.Article,
-		"Translations": aw.Translations,
+		"Article":      articleWithTranslations.Article,
+		"Translations": articleWithTranslations.Translations,
 		"Langs":        domain.SupportedLangs,
 	}
 	renderPage(c, h.tpl.edit, data)
@@ -125,7 +125,7 @@ func (h *Handler) Reject(c *gin.Context) {
 // respondUpdatedRow は承認・却下後に最新の行 HTML を返す。
 // hx-target が #row-{articleId} のときだけ行フラグメントを返し、それ以外は HX-Redirect / 303 でリストへ戻す。
 func (h *Handler) respondUpdatedRow(c *gin.Context, articleID string) {
-	aw, err := h.uc.Get(c.Request.Context(), articleID)
+	articleWithTranslations, err := h.uc.Get(c.Request.Context(), articleID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -137,7 +137,7 @@ func (h *Handler) respondUpdatedRow(c *gin.Context, articleID string) {
 		return
 	}
 
-	item := toAdminListItem(*aw)
+	item := toAdminListItem(*articleWithTranslations)
 	var buf bytes.Buffer
 	if err := h.tpl.row.ExecuteTemplate(&buf, "row", item); err != nil {
 		respondError(c, fmt.Errorf("render row: %w", err))
@@ -167,30 +167,30 @@ func renderPage(c *gin.Context, tpl *template.Template, data any) {
 }
 
 // toAdminListItem は ArticleWithTranslations から一覧表示用のビューモデルを作る。
-func toAdminListItem(aw domain.ArticleWithTranslations) adminListItem {
+func toAdminListItem(articleWithTranslations domain.ArticleWithTranslations) adminListItem {
 	var displayTitle string
-	langs := make([]string, 0, len(aw.Translations))
-	for _, t := range aw.Translations {
+	langs := make([]string, 0, len(articleWithTranslations.Translations))
+	for _, t := range articleWithTranslations.Translations {
 		langs = append(langs, t.Lang)
 		if t.Lang == domain.LangJa {
 			displayTitle = t.Title
 		}
 	}
 	return adminListItem{
-		Article:      aw.Article,
+		Article:      articleWithTranslations.Article,
 		DisplayTitle: displayTitle,
 		LangsLabel:   strings.Join(langs, ", "),
 	}
 }
 
-// headerTitle は編集画面の <title> に表示する文字列を決める。ja 翻訳があればそのタイトル、無ければ article_id。
-func headerTitle(aw *domain.ArticleWithTranslations) string {
-	for _, t := range aw.Translations {
+// deriveHeaderTitle は編集画面の <title> に表示する文字列を決める。ja 翻訳があればそのタイトル、無ければ article_id。
+func deriveHeaderTitle(articleWithTranslations *domain.ArticleWithTranslations) string {
+	for _, t := range articleWithTranslations.Translations {
 		if t.Lang == domain.LangJa {
 			return t.Title
 		}
 	}
-	return aw.Article.ArticleID
+	return articleWithTranslations.Article.ArticleID
 }
 
 // parseStatusFilter は status クエリ群を Status 集合フィルタに変換する。
@@ -218,7 +218,7 @@ func parseStatusFilter(raws []string) ([]domain.Status, string, error) {
 		default:
 			return nil, "", fmt.Errorf("%w: unknown status %q", review.ErrInvalidField, raw)
 		}
-		if _, dup := seen[s]; dup {
+		if _, isDuplicate := seen[s]; isDuplicate {
 			continue
 		}
 		seen[s] = struct{}{}

@@ -63,8 +63,8 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	if cfg.httpClient != nil {
 		apiOpts = append(apiOpts, apinews.WithHTTPClient(cfg.httpClient))
 	}
-	for _, ed := range cfg.editors {
-		apiOpts = append(apiOpts, apinews.WithRequestEditorFn(ed))
+	for _, editor := range cfg.editors {
+		apiOpts = append(apiOpts, apinews.WithRequestEditorFn(editor))
 	}
 
 	api, err := apinews.NewClientWithResponses(baseURL, apiOpts...)
@@ -83,7 +83,7 @@ func (c *Client) GetHealth(ctx context.Context) (*apinews.HealthResponse, error)
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("GetHealth", resp.StatusCode())
+	return nil, toStatusError("GetHealth", resp.StatusCode())
 }
 
 // ListNews は指定言語で公開中のニュース記事一覧を返す。
@@ -95,7 +95,7 @@ func (c *Client) ListNews(ctx context.Context, lang string, limit int) (*apinews
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("ListNews", resp.StatusCode())
+	return nil, toStatusError("ListNews", resp.StatusCode())
 }
 
 // GetNewsDetail は指定言語でニュース記事詳細を返す。articleID は ULID。
@@ -107,11 +107,11 @@ func (c *Client) GetNewsDetail(ctx context.Context, articleID string, lang strin
 	if resp.JSON200 != nil {
 		return resp.JSON200, nil
 	}
-	return nil, statusError("GetNewsDetail", resp.StatusCode())
+	return nil, toStatusError("GetNewsDetail", resp.StatusCode())
 }
 
-// statusError は HTTP status code を sentinel error (errors.Is 分岐可能) に変換する。
-func statusError(op string, code int) error {
+// toStatusError は HTTP status code を sentinel error (errors.Is 分岐可能) に変換する。
+func toStatusError(op string, code int) error {
 	var sentinel error
 	switch {
 	case code == http.StatusUnauthorized:

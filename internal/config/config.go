@@ -40,11 +40,11 @@ func FromEnv() (*Config, error) {
 		return nil, err
 	}
 
-	internalPort, err := requiredInt("INTERNAL_PORT")
+	internalPort, err := requireInt("INTERNAL_PORT")
 	if err != nil {
 		return nil, err
 	}
-	adminPort, err := requiredInt("ADMIN_PORT")
+	adminPort, err := requireInt("ADMIN_PORT")
 	if err != nil {
 		return nil, err
 	}
@@ -52,19 +52,19 @@ func FromEnv() (*Config, error) {
 		return nil, fmt.Errorf("INTERNAL_PORT and ADMIN_PORT must differ (both = %d)", internalPort)
 	}
 
-	databaseConn, err := requiredString("DATABASE_CONN")
+	databaseConn, err := requireString("DATABASE_CONN")
 	if err != nil {
 		return nil, err
 	}
-	cloudProject, err := requiredString("GOOGLE_CLOUD_PROJECT")
+	cloudProject, err := requireString("GOOGLE_CLOUD_PROJECT")
 	if err != nil {
 		return nil, err
 	}
-	sub, err := requiredString("NEWS_ARTICLE_COLLECTED_SUBSCRIPTION")
+	sub, err := requireString("NEWS_ARTICLE_COLLECTED_SUBSCRIPTION")
 	if err != nil {
 		return nil, err
 	}
-	internalAuthSecret, err := requiredString("INTERNAL_AUTH_SECRET")
+	internalAuthSecret, err := requireString("INTERNAL_AUTH_SECRET")
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +92,8 @@ func parseEnv(s string) (Env, error) {
 	}
 }
 
-// requiredString は必須の文字列 env を取得する。空文字列ならエラー。
-func requiredString(name string) (string, error) {
+// requireString は必須の文字列 env を取得する。空文字列ならエラー。
+func requireString(name string) (string, error) {
 	v := os.Getenv(name)
 	if v == "" {
 		return "", fmt.Errorf("%s is required", name)
@@ -101,8 +101,8 @@ func requiredString(name string) (string, error) {
 	return v, nil
 }
 
-// requiredInt は必須の整数 env を取得する。未設定 / 非整数ならエラー。
-func requiredInt(name string) (int, error) {
+// requireInt は必須の整数 env を取得する。未設定 / 非整数ならエラー。
+func requireInt(name string) (int, error) {
 	v := os.Getenv(name)
 	if v == "" {
 		return 0, fmt.Errorf("%s is required", name)

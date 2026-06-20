@@ -20,7 +20,7 @@ type templates struct {
 
 // parseTemplates は embed.FS からテンプレート集合を組み立てる。起動時に 1 回だけ呼ぶ。
 func parseTemplates() (*templates, error) {
-	base := template.New("").Funcs(templateFuncMap())
+	base := template.New("").Funcs(buildTemplateFuncMap())
 
 	list, err := base.Clone()
 	if err != nil {
@@ -52,8 +52,8 @@ func parseTemplates() (*templates, error) {
 	return &templates{list: list, edit: edit, row: row}, nil
 }
 
-// templateFuncMap は Go テンプレートから呼べるヘルパー関数を集める。
-func templateFuncMap() template.FuncMap {
+// buildTemplateFuncMap は Go テンプレートから呼べるヘルパー関数を集める。
+func buildTemplateFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"statusNE": func(s domain.Status, target string) bool {
 			return string(s) != target

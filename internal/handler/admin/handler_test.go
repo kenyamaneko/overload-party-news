@@ -30,7 +30,7 @@ func newAdminServer(t *testing.T, repo *port.MockNewsRepo) *gin.Engine {
 	require.NoError(t, err)
 
 	r := gin.New()
-	g := r.Group("/admin", admin.AuthMiddleware(config.EnvLocal))
+	g := r.Group("/admin", admin.NewAuthMiddleware(config.EnvLocal))
 	g.GET("/articles", h.List)
 	g.GET("/articles/:articleId", h.GetEdit)
 	g.POST("/articles/:articleId/translations/:lang", h.UpsertTranslation)

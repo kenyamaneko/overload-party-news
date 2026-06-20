@@ -10,8 +10,8 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
 )
 
-// errorStatus は usecase 層のエラーを HTTP ステータスにマップする。
-func errorStatus(err error) int {
+// deriveErrorStatus は usecase 層のエラーを HTTP ステータスにマップする。
+func deriveErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, port.ErrNotFound):
 		return http.StatusNotFound
@@ -24,6 +24,7 @@ func errorStatus(err error) int {
 	}
 }
 
+// respondError はドメインエラーを HTTP ステータスと JSON エラーボディに変換して返す。
 func respondError(c *gin.Context, err error) {
-	c.JSON(errorStatus(err), gin.H{"error": err.Error()})
+	c.JSON(deriveErrorStatus(err), gin.H{"error": err.Error()})
 }
