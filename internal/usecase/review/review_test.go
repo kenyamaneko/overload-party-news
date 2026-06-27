@@ -19,6 +19,9 @@ func newInteractor(repo *port.MockNewsRepo) *review.Interactor {
 	return review.New(repo, repo, func() time.Time { return fixedNow })
 }
 
+// toIntPtr は int リテラルのアドレスを直接取れない Go の制約を補うテストヘルパー。
+func toIntPtr(n int) *int { return &n }
+
 // upsertCall / reviewCall は repo に渡された値の集合。
 // テスト期待値として「正常時に何が渡るか」「失敗時は呼ばれない (= nil)」を 1 つの値で表現する。
 type upsertCall struct {
@@ -204,13 +207,14 @@ func TestList(t *testing.T) {
 	threeArticles := []domain.Article{pendingArticle, publishedArticle, rejectedArticle}
 
 	cases := []struct {
-		name        string
-		articles    []domain.Article
-		filter      []domain.Status
-		limit       int
-		wantErr     error
-		wantIDs     []string
-		wantTransOn []string // nil 想定 = 翻訳取得呼び出しなし
+		name             string
+		articles         []domain.Article
+		filter           []domain.Status
+		limit            int
+		wantErr          error
+		wantIDs          []string
+		wantTransOn      []string // nil 想定 = 翻訳取得呼び出しなし
+		wantQueriedLimit *int     // nil 想定 = querier 未呼び出し
 	}{
 		{
 			name:    "limit=0 は ErrInvalidField",
@@ -231,52 +235,59 @@ func TestList(t *testing.T) {
 			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:        "limit ちょうど上限 (AdminListLimitMax) は通る",
-			articles:    threeArticles,
-			filter:      domain.Statuses,
-			limit:       review.AdminListLimitMax,
-			wantIDs:     []string{"a-pending", "a-published", "a-rejected"},
-			wantTransOn: []string{"a-pending", "a-published", "a-rejected"},
+			name:             "limit ちょうど上限 (AdminListLimitMax) は querier にそのまま転送される",
+			articles:         threeArticles,
+			filter:           domain.Statuses,
+			limit:            review.AdminListLimitMax,
+			wantIDs:          []string{"a-pending", "a-published", "a-rejected"},
+			wantTransOn:      []string{"a-pending", "a-published", "a-rejected"},
+			wantQueriedLimit: toIntPtr(review.AdminListLimitMax),
 		},
 		{
-			name:        "全 status 列挙で 3 件 (DeriveStatus で各 status を導出)",
-			articles:    threeArticles,
-			filter:      domain.Statuses,
-			limit:       50,
-			wantIDs:     []string{"a-pending", "a-published", "a-rejected"},
-			wantTransOn: []string{"a-pending", "a-published", "a-rejected"},
+			name:             "全 status 列挙で 3 件 (DeriveStatus で各 status を導出)",
+			articles:         threeArticles,
+			filter:           domain.Statuses,
+			limit:            50,
+			wantIDs:          []string{"a-pending", "a-published", "a-rejected"},
+			wantTransOn:      []string{"a-pending", "a-published", "a-rejected"},
+			wantQueriedLimit: toIntPtr(50),
 		},
 		{
-			name:        "pending のみで 1 件",
-			articles:    threeArticles,
-			filter:      []domain.Status{domain.StatusPending},
-			limit:       50,
-			wantIDs:     []string{"a-pending"},
-			wantTransOn: []string{"a-pending"},
+			name:             "pending のみで 1 件",
+			articles:         threeArticles,
+			filter:           []domain.Status{domain.StatusPending},
+			limit:            50,
+			wantIDs:          []string{"a-pending"},
+			wantTransOn:      []string{"a-pending"},
+			wantQueriedLimit: toIntPtr(50),
 		},
 		{
-			name:        "published + rejected の複数指定で 2 件",
-			articles:    threeArticles,
-			filter:      []domain.Status{domain.StatusPublished, domain.StatusRejected},
-			limit:       50,
-			wantIDs:     []string{"a-published", "a-rejected"},
-			wantTransOn: []string{"a-published", "a-rejected"},
+			name:             "published + rejected の複数指定で 2 件",
+			articles:         threeArticles,
+			filter:           []domain.Status{domain.StatusPublished, domain.StatusRejected},
+			limit:            50,
+			wantIDs:          []string{"a-published", "a-rejected"},
+			wantTransOn:      []string{"a-published", "a-rejected"},
+			wantQueriedLimit: toIntPtr(50),
 		},
 		{
-			name:        "フィルタ後ゼロ件のとき翻訳取得は呼ばれない",
-			articles:    []domain.Article{publishedArticle},
-			filter:      []domain.Status{domain.StatusPending},
-			limit:       50,
-			wantIDs:     nil,
-			wantTransOn: nil,
+			name:             "フィルタ後ゼロ件のとき翻訳取得は呼ばれない",
+			articles:         []domain.Article{publishedArticle},
+			filter:           []domain.Status{domain.StatusPending},
+			limit:            50,
+			wantIDs:          nil,
+			wantTransOn:      nil,
+			wantQueriedLimit: toIntPtr(50),
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			var gotLimit *int
 			var gotTransIDs []string
 			repo := &port.MockNewsRepo{
-				ListArticlesFn: func(_ context.Context, _ int) ([]domain.Article, error) {
+				ListArticlesFn: func(_ context.Context, limit int) ([]domain.Article, error) {
+					gotLimit = toIntPtr(limit)
 					return tc.articles, nil
 				},
 				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]domain.Translation, error) {
@@ -292,6 +303,7 @@ func TestList(t *testing.T) {
 			for _, g := range got {
 				gotIDs = append(gotIDs, g.Article.ArticleID)
 			}
+			assert.Equal(t, tc.wantQueriedLimit, gotLimit)
 			assert.Equal(t, tc.wantIDs, gotIDs)
 			assert.Equal(t, tc.wantTransOn, gotTransIDs)
 		})
