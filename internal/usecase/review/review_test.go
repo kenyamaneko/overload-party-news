@@ -206,6 +206,7 @@ func TestList(t *testing.T) {
 	rejectedArticle := domain.Article{ArticleID: "a-rejected", ReviewedAt: &now, PublishedAt: &earlier}
 	threeArticles := []domain.Article{pendingArticle, publishedArticle, rejectedArticle}
 
+	// limit の truncation と limit→filter の適用順は実 PostgreSQL を要するため TestListLimitWindow で検証する。
 	cases := []struct {
 		name             string
 		articles         []domain.Article
@@ -217,25 +218,25 @@ func TestList(t *testing.T) {
 		wantQueriedLimit *int     // nil 想定 = querier 未呼び出し
 	}{
 		{
-			name:    "limit=0 は ErrInvalidField",
+			name:    "limit=0 は範囲 (0, Max] 違反で ErrInvalidField、querier に到達しない",
 			limit:   0,
 			filter:  domain.Statuses,
 			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:    "limit 負値は ErrInvalidField",
+			name:    "limit 負値は範囲 (0, Max] 違反で ErrInvalidField、querier に到達しない",
 			limit:   -1,
 			filter:  domain.Statuses,
 			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:    "limit 上限超過は ErrInvalidField",
+			name:    "limit 上限超過 (Max+1) は範囲 (0, Max] 違反で ErrInvalidField、querier に到達しない",
 			limit:   review.AdminListLimitMax + 1,
 			filter:  domain.Statuses,
 			wantErr: review.ErrInvalidField,
 		},
 		{
-			name:             "limit ちょうど上限 (AdminListLimitMax) は querier にそのまま転送される",
+			name:             "limit 上限ちょうど (Max) は境界内として受理され、その値が querier の取得件数に転送される",
 			articles:         threeArticles,
 			filter:           domain.Statuses,
 			limit:            review.AdminListLimitMax,
@@ -244,7 +245,7 @@ func TestList(t *testing.T) {
 			wantQueriedLimit: toIntPtr(review.AdminListLimitMax),
 		},
 		{
-			name:             "全 status 列挙で 3 件 (DeriveStatus で各 status を導出)",
+			name:             "全 status 指定なら querier が返した記事を各 status を DeriveStatus で導出して全件返す",
 			articles:         threeArticles,
 			filter:           domain.Statuses,
 			limit:            50,
@@ -253,7 +254,7 @@ func TestList(t *testing.T) {
 			wantQueriedLimit: toIntPtr(50),
 		},
 		{
-			name:             "pending のみで 1 件",
+			name:             "pending のみ指定なら pending と導出される記事だけ返す",
 			articles:         threeArticles,
 			filter:           []domain.Status{domain.StatusPending},
 			limit:            50,
@@ -262,7 +263,7 @@ func TestList(t *testing.T) {
 			wantQueriedLimit: toIntPtr(50),
 		},
 		{
-			name:             "published + rejected の複数指定で 2 件",
+			name:             "published+rejected を指定なら該当する 2 件だけ返す",
 			articles:         threeArticles,
 			filter:           []domain.Status{domain.StatusPublished, domain.StatusRejected},
 			limit:            50,
@@ -271,7 +272,7 @@ func TestList(t *testing.T) {
 			wantQueriedLimit: toIntPtr(50),
 		},
 		{
-			name:             "フィルタ後ゼロ件のとき翻訳取得は呼ばれない",
+			name:             "該当 status が 0 件なら翻訳取得を呼ばずに空を返す",
 			articles:         []domain.Article{publishedArticle},
 			filter:           []domain.Status{domain.StatusPending},
 			limit:            50,
