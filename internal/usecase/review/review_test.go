@@ -2,6 +2,7 @@ package review_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,14 @@ import (
 )
 
 var fixedNow = time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
+
+// 依存先 (querier / writer) が返したエラーを usecase がそのまま呼び出し元へ伝播することを
+// 検証するために注入するセンチネル。
+var (
+	errListArticles     = errors.New("list articles failed")
+	errListTranslations = errors.New("list translations failed")
+	errReject           = errors.New("reject failed")
+)
 
 func newInteractor(repo *port.MockNewsRepo) *review.Interactor {
 	return review.New(repo, repo, func() time.Time { return fixedNow })
@@ -164,10 +173,11 @@ func TestPublish(t *testing.T) {
 func TestReject(t *testing.T) {
 	const articleID = "article-1"
 	cases := []struct {
-		name     string
-		reviewer string
-		wantErr  error
-		wantCall *reviewCall
+		name      string
+		reviewer  string
+		writerErr error
+		wantErr   error
+		wantCall  *reviewCall
 	}{
 		{
 			name:     "正常 reviewer は repo に articleID/reviewer/now が渡る",
@@ -179,6 +189,13 @@ func TestReject(t *testing.T) {
 			reviewer: "",
 			wantErr:  review.ErrInvalidField,
 		},
+		{
+			name:      "writer が失敗するとそのエラーがそのまま伝播し、repo には articleID/reviewer/now が渡る",
+			reviewer:  "alice@example.com",
+			writerErr: errReject,
+			wantErr:   errReject,
+			wantCall:  &reviewCall{articleID: articleID, reviewer: "alice@example.com", now: fixedNow},
+		},
 	}
 
 	for _, tc := range cases {
@@ -187,7 +204,7 @@ func TestReject(t *testing.T) {
 			repo := &port.MockNewsRepo{
 				RejectFn: func(_ context.Context, id string, reviewer string, now time.Time) error {
 					got = &reviewCall{articleID: id, reviewer: reviewer, now: now}
-					return nil
+					return tc.writerErr
 				},
 			}
 			err := newInteractor(repo).Reject(context.Background(), articleID, tc.reviewer)
@@ -212,6 +229,8 @@ func TestList(t *testing.T) {
 		articles         []domain.Article
 		filter           []domain.Status
 		limit            int
+		listArticlesErr  error
+		listTransErr     error
 		wantErr          error
 		wantIDs          []string
 		wantTransOn      []string // nil 想定 = 翻訳取得呼び出しなし
@@ -280,6 +299,28 @@ func TestList(t *testing.T) {
 			wantTransOn:      nil,
 			wantQueriedLimit: toIntPtr(50),
 		},
+		{
+			name:             "記事取得が失敗するとそのエラーがそのまま伝播し、翻訳取得には到達しない",
+			articles:         threeArticles,
+			filter:           domain.Statuses,
+			limit:            50,
+			listArticlesErr:  errListArticles,
+			wantErr:          errListArticles,
+			wantIDs:          nil,
+			wantTransOn:      nil,
+			wantQueriedLimit: toIntPtr(50),
+		},
+		{
+			name:             "翻訳取得が失敗するとそのエラーがそのまま伝播し結果は返らない",
+			articles:         threeArticles,
+			filter:           domain.Statuses,
+			limit:            50,
+			listTransErr:     errListTranslations,
+			wantErr:          errListTranslations,
+			wantIDs:          nil,
+			wantTransOn:      []string{"a-pending", "a-published", "a-rejected"},
+			wantQueriedLimit: toIntPtr(50),
+		},
 	}
 
 	for _, tc := range cases {
@@ -289,11 +330,11 @@ func TestList(t *testing.T) {
 			repo := &port.MockNewsRepo{
 				ListArticlesFn: func(_ context.Context, limit int) ([]domain.Article, error) {
 					gotLimit = toIntPtr(limit)
-					return tc.articles, nil
+					return tc.articles, tc.listArticlesErr
 				},
 				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]domain.Translation, error) {
 					gotTransIDs = ids
-					return nil, nil
+					return nil, tc.listTransErr
 				},
 			}
 
@@ -321,6 +362,7 @@ func TestGet(t *testing.T) {
 		name            string
 		articleReturn   *domain.Article
 		articleErr      error
+		transErr        error
 		wantErr         error
 		want            *domain.ArticleWithTranslations
 		wantTransCalled bool
@@ -338,6 +380,14 @@ func TestGet(t *testing.T) {
 			want:            nil,
 			wantTransCalled: false,
 		},
+		{
+			name:            "翻訳取得が失敗するとそのエラーがそのまま伝播し結果は返らない",
+			articleReturn:   article,
+			transErr:        errListTranslations,
+			wantErr:         errListTranslations,
+			want:            nil,
+			wantTransCalled: true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -350,7 +400,7 @@ func TestGet(t *testing.T) {
 				ListTranslationsByArticleIDsFn: func(_ context.Context, ids []string) ([]domain.Translation, error) {
 					transCalled = true
 					assert.Equal(t, []string{"01"}, ids)
-					return translations, nil
+					return translations, tc.transErr
 				},
 			}
 
