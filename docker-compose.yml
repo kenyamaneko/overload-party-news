@@ -1,15 +1,4 @@
-# news のローカル開発スタック。
-#
-# インフラ (Postgres / Pub/Sub emulator) はホストへ publish せず、compose 内部
-# ネットワークのサービス名 DNS で参照する。ホストへ出すのは news 自身の API ポート
-# (REST 9008 / admin 9108) のみで、他リポと衝突しうる番号をホストに出さない。
-#
-# アプリはコンテナ内で `go run` し、ソースを bind-mount する。ソースを編集して
-# `news` コンテナを再起動すれば、イメージを作り直さずに最新コードが反映される。
-# private module は host の module cache (make run が go env GOMODCACHE を渡す) を
-# 読み取り専用でマウントして解決するため、コンテナ内での fetch もトークンも要らない。
-#
-# 起動: make run
+# news のローカル開発スタック。構成と使い方は README「ローカル開発」を参照。
 name: overload-party-news
 
 # 購読 subscription 名は news 本体と pubsub-init の双方が参照するため、ここで一度だけ定義する。
