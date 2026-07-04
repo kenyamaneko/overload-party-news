@@ -22,17 +22,6 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// fakeRouterVerifier は router 単体テスト用の internalauth.Verifier 最小 fake。
-type fakeRouterVerifier struct {
-	playerID string
-	err      error
-}
-
-// Verify は固定の playerID / err を返す。
-func (f fakeRouterVerifier) Verify(string) (string, error) {
-	return f.playerID, f.err
-}
-
 // newTestPublicRouter は記事なしを返す MockNewsRepo で組んだ実 usecase / handler で
 // 公開 router を構築する。
 func newTestPublicRouter(verifier internalauth.Verifier) *gin.Engine {
@@ -46,7 +35,8 @@ func newTestPublicRouter(verifier internalauth.Verifier) *gin.Engine {
 
 // TestNewPublic_HealthEndpoint は /health が auth middleware を通らず 200 を返すことを確かめる。
 func TestNewPublic_HealthEndpoint(t *testing.T) {
-	r := newTestPublicRouter(fakeRouterVerifier{})
+	// VerifyFn 未設定: /health が verifier に到達しないことの検出を兼ねる
+	r := newTestPublicRouter(&internalauth.MockVerifier{})
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -55,7 +45,8 @@ func TestNewPublic_HealthEndpoint(t *testing.T) {
 // TestNewPublic_ApiRouteRequiresInternalAuth は /api/v1/news 配下が auth header 欠落で
 // 401 を返し handler に到達しないことを確かめる。
 func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
-	r := newTestPublicRouter(fakeRouterVerifier{playerID: "TST-PLAYER-1"})
+	// VerifyFn 未設定: header 欠落時は middleware が verifier に到達しないことの検出を兼ねる
+	r := newTestPublicRouter(&internalauth.MockVerifier{})
 
 	cases := []struct {
 		name string
@@ -83,7 +74,9 @@ func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 // TestNewPublic_ApiRouteRejectsVerifierError は verifier が error を返すと 401 を返し
 // handler に到達しないことを確かめる。
 func TestNewPublic_ApiRouteRejectsVerifierError(t *testing.T) {
-	r := newTestPublicRouter(fakeRouterVerifier{err: errors.New("invalid token")})
+	r := newTestPublicRouter(&internalauth.MockVerifier{
+		VerifyFn: func(string) (string, error) { return "", errors.New("invalid token") },
+	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/news?lang=ja&limit=10", nil)
 	req.Header.Set(internalauth.HeaderName, "any.token")
@@ -94,7 +87,9 @@ func TestNewPublic_ApiRouteRejectsVerifierError(t *testing.T) {
 // TestNewPublic_ApiRouteWithValidTokenReachesHandler は verifier を通過したリクエストが
 // handler の成功応答まで到達することを確かめる。
 func TestNewPublic_ApiRouteWithValidTokenReachesHandler(t *testing.T) {
-	r := newTestPublicRouter(fakeRouterVerifier{playerID: "TST-PLAYER-1"})
+	r := newTestPublicRouter(&internalauth.MockVerifier{
+		VerifyFn: func(string) (string, error) { return "TST-PLAYER-1", nil },
+	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/news?lang=ja&limit=10", nil)
 	req.Header.Set(internalauth.HeaderName, "any.token")
