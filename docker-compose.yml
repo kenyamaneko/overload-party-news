@@ -1,6 +1,20 @@
-# ローカル動作確認用の PostgreSQL。
-# テストでは Testcontainers が別途コンテナを起動するため、
-# 本 compose は `make run` (cmd/server) のローカル動作確認用。
+# news のローカル開発スタック。
+#
+# インフラ (Postgres / Pub/Sub emulator) はホストへ publish せず、compose 内部
+# ネットワークのサービス名 DNS で参照する。ホストへ出すのは news 自身の API ポート
+# (REST 9008 / admin 9108) のみで、他リポと衝突しうる番号をホストに出さない。
+#
+# アプリはコンテナ内で `go run` し、ソースを bind-mount する。ソースを編集して
+# `news` コンテナを再起動すれば、イメージを作り直さずに最新コードが反映される。
+# private module は host の module cache (make run が go env GOMODCACHE を渡す) を
+# 読み取り専用でマウントして解決するため、コンテナ内での fetch もトークンも要らない。
+#
+# 起動: make run
+name: overload-party-news
+
+# 購読 subscription 名は news 本体と pubsub-init の双方が参照するため、ここで一度だけ定義する。
+x-news-subscription: &news_sub news-article-collected-news-sub
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,8 +22,6 @@ services:
       POSTGRES_USER: news
       POSTGRES_PASSWORD: news
       POSTGRES_DB: news
-    ports:
-      - "5432:5432"
     volumes:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - news_pgdata:/var/lib/postgresql/data
@@ -19,5 +31,70 @@ services:
       timeout: 2s
       retries: 15
 
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --project=overload-party-local
+      --host-port=0.0.0.0:8085
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8085 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # news が購読する subscription を emulator に用意する。news は起動時に stream を
+  # 開くため、作成完了を待たせる。
+  pubsub-init:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: overload-party-local
+      NEWS_ARTICLE_COLLECTED_TOPIC: news-article-collected
+      NEWS_ARTICLE_COLLECTED_SUBSCRIPTION: *news_sub
+    volumes:
+      - ./docker/pubsub/init-topics.sh:/init-topics.sh:ro
+    entrypoint: ["/bin/bash", "/init-topics.sh"]
+    restart: "no"
+
+  news:
+    image: golang:1.25-alpine
+    working_dir: /src
+    command: go run ./cmd/server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pubsub-init:
+        condition: service_completed_successfully
+    environment:
+      CGO_ENABLED: "0"
+      # module cache は host のものを読み取り専用でマウントするため、コンテナ内 fetch を
+      # 禁止して cache 欠落を即エラーにする。private module の解決は host 側 (make run の
+      # go mod download) が担い、コンテナはトークン無しで cache を読むだけにする。
+      GOPROXY: "off"
+      GOPRIVATE: github.com/kenyamaneko/*
+      # host の go.work (sibling module のローカル overlay) を bind-mount が持ち込むが、
+      # コンテナには sibling が無い。workspace を無効化し go.mod の公開版で解決させる。
+      GOWORK: "off"
+      ENV: local
+      INTERNAL_PORT: "9008"
+      ADMIN_PORT: "9108"
+      DATABASE_CONN: host=postgres port=5432 dbname=news user=news password=news sslmode=disable
+      GOOGLE_CLOUD_PROJECT: overload-party-local
+      NEWS_ARTICLE_COLLECTED_SUBSCRIPTION: *news_sub
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      INTERNAL_AUTH_SECRET: dev-secret-not-for-prod
+    volumes:
+      - ./:/src
+      - ${HOST_GOMODCACHE:?make run 経由で起動すること (go env GOMODCACHE を渡す必要がある)}:/go/pkg/mod:ro
+      - news_gobuild:/root/.cache/go-build
+    ports:
+      - "9008:9008"
+      - "9108:9108"
+
 volumes:
   news_pgdata:
+  news_gobuild:
