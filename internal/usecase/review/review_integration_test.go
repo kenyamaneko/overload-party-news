@@ -58,7 +58,6 @@ func seedArticleAt(t *testing.T, ctx context.Context, pg *postgrestest.Postgres,
 	require.NoError(t, err)
 }
 
-// TestListLimitWindow は review.List の limit 窓と status フィルタの契約を実 PostgreSQL で検証する。
 func TestListLimitWindow(t *testing.T) {
 	ctx := context.Background()
 	pg, err := postgrestest.Start(ctx)
@@ -68,57 +67,59 @@ func TestListLimitWindow(t *testing.T) {
 	})
 	repo := postgres.NewNewsRepository(pg.Pool)
 
-	cases := []struct {
-		name    string
-		seeds   []seedSpec // ingested_at 昇順 (末尾が最新)
-		filter  []domain.Status
-		limit   int
-		wantIDs []string // review.List の返却順 (ingested_at DESC) で期待値を並べる
-	}{
-		{
-			name: "件数が limit を超えるとき最新 limit 件で打ち切られ ingested_at DESC 上位が残る",
-			seeds: []seedSpec{
-				{"a1", domain.StatusPending},
-				{"a2", domain.StatusPending},
-				{"a3", domain.StatusPending},
-				{"a4", domain.StatusPending},
-				{"a5", domain.StatusPending},
+	t.Run("limit 窓と status フィルタ", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			seeds   []seedSpec // ingested_at 昇順 (末尾が最新)
+			filter  []domain.Status
+			limit   int
+			wantIDs []string // review.List の返却順 (ingested_at DESC) で期待値を並べる
+		}{
+			{
+				name: "件数が limit を超えるとき、最新 limit 件で打ち切られ ingested_at DESC 上位が残る",
+				seeds: []seedSpec{
+					{"a1", domain.StatusPending},
+					{"a2", domain.StatusPending},
+					{"a3", domain.StatusPending},
+					{"a4", domain.StatusPending},
+					{"a5", domain.StatusPending},
+				},
+				filter:  domain.Statuses,
+				limit:   3,
+				wantIDs: []string{"a5", "a4", "a3"},
 			},
-			filter:  domain.Statuses,
-			limit:   3,
-			wantIDs: []string{"a5", "a4", "a3"},
-		},
-		{
-			name: "limit 超過時フィルタは最新 limit 件の窓内だけに効き、窓外の該当 status は拾い直さない",
-			seeds: []seedSpec{
-				{"pub-out-a", domain.StatusPublished},
-				{"pub-out-b", domain.StatusPublished},
-				{"pub-in", domain.StatusPublished},
-				{"pend-in-a", domain.StatusPending},
-				{"pend-in-b", domain.StatusPending},
+			{
+				name: "limit 超過のとき、フィルタは最新 limit 件の窓内だけに効き窓外の該当 status は拾い直さない",
+				seeds: []seedSpec{
+					{"pub-out-a", domain.StatusPublished},
+					{"pub-out-b", domain.StatusPublished},
+					{"pub-in", domain.StatusPublished},
+					{"pend-in-a", domain.StatusPending},
+					{"pend-in-b", domain.StatusPending},
+				},
+				filter:  []domain.Status{domain.StatusPublished},
+				limit:   3,
+				wantIDs: []string{"pub-in"},
 			},
-			filter:  []domain.Status{domain.StatusPublished},
-			limit:   3,
-			wantIDs: []string{"pub-in"},
-		},
-	}
+		}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			pg.Truncate(t)
-			for i, s := range tc.seeds {
-				seedArticleAt(t, ctx, pg, repo, s.id, s.status, seedIngestBase.Add(time.Duration(i)*time.Minute))
-			}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				pg.Truncate(t)
+				for i, s := range tc.seeds {
+					seedArticleAt(t, ctx, pg, repo, s.id, s.status, seedIngestBase.Add(time.Duration(i)*time.Minute))
+				}
 
-			uc := review.New(repo, repo, func() time.Time { return integrationFixedNow })
-			got, err := uc.List(ctx, tc.filter, tc.limit)
-			require.NoError(t, err)
+				uc := review.New(repo, repo, func() time.Time { return integrationFixedNow })
+				got, err := uc.List(ctx, tc.filter, tc.limit)
+				require.NoError(t, err)
 
-			gotIDs := make([]string, 0, len(got))
-			for _, g := range got {
-				gotIDs = append(gotIDs, g.Article.ArticleID)
-			}
-			assert.Equal(t, tc.wantIDs, gotIDs)
-		})
-	}
+				gotIDs := make([]string, 0, len(got))
+				for _, g := range got {
+					gotIDs = append(gotIDs, g.Article.ArticleID)
+				}
+				assert.Equal(t, tc.wantIDs, gotIDs)
+			})
+		}
+	})
 }

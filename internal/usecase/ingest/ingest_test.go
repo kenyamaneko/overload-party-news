@@ -29,200 +29,225 @@ func validEvent() apinews.ArticleCollectedEvent {
 	}
 }
 
-func TestInsert_Validation(t *testing.T) {
-	cases := []struct {
-		name                 string
-		mutate               func(*apinews.ArticleCollectedEvent)
-		wantErr              error
-		wantArticleCallCount int
-		wantTransCallCount   int
-	}{
-		{
-			name:                 "完全なイベント (ja 1 件)",
-			mutate:               func(_ *apinews.ArticleCollectedEvent) {},
-			wantArticleCallCount: 1,
-			wantTransCallCount:   1,
-		},
-		{
-			name:                 "source_published_at null でも許容",
-			mutate:               func(e *apinews.ArticleCollectedEvent) { e.SourcePublishedAt = nil },
-			wantArticleCallCount: 1,
-			wantTransCallCount:   1,
-		},
-		{
-			name:                 "tags nil でも許容",
-			mutate:               func(e *apinews.ArticleCollectedEvent) { e.Tags = nil },
-			wantArticleCallCount: 1,
-			wantTransCallCount:   1,
-		},
-		{
-			name: "ja + en の 2 件は MVP 仕様違反で拒否",
-			mutate: func(e *apinews.ArticleCollectedEvent) {
-				e.Translations = append(e.Translations, apinews.EventTranslation{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"})
+func TestInsert(t *testing.T) {
+	t.Run("イベントの取込", func(t *testing.T) {
+		validCases := []struct {
+			name   string
+			mutate func(*apinews.ArticleCollectedEvent)
+		}{
+			{
+				name:   "完全なイベント (ja 1 件) のとき、記事と翻訳が INSERT される",
+				mutate: func(_ *apinews.ArticleCollectedEvent) {},
 			},
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "article_id 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "source 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Source = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "source_url 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.SourceURL = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "translations 空",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Translations = nil },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "translations[0].lang が en (ja 以外) は拒否",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = domain.LangEn },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "translations[0].lang 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "translations[0].title 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Title = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "translations[0].summary 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Summary = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-		{
-			name:    "translations[0].body 欠け",
-			mutate:  func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Body = "" },
-			wantErr: ingest.ErrInvalidEventPayload,
-		},
-	}
+			{
+				name:   "source_published_at が null でも、INSERT される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.SourcePublishedAt = nil },
+			},
+			{
+				name:   "tags が nil でも、INSERT される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Tags = nil },
+			},
+		}
+		for _, tc := range validCases {
+			t.Run(tc.name, func(t *testing.T) {
+				var articleCalls, transCalls int
+				repo := &port.MockNewsRepo{
+					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
+						articleCalls++
+						return true, nil
+					},
+					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
+						transCalls++
+						return nil
+					},
+				}
+				event := validEvent()
+				tc.mutate(&event)
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var articleCalls, transCalls int
+				_, err := ingest.New(repo).Insert(context.Background(), event)
+
+				require.NoError(t, err)
+				assert.Equal(t, 1, articleCalls)
+				assert.Equal(t, 1, transCalls)
+			})
+		}
+
+		invalidCases := []struct {
+			name   string
+			mutate func(*apinews.ArticleCollectedEvent)
+		}{
+			{
+				name: "翻訳が ja + en の 2 件のとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) {
+					e.Translations = append(e.Translations, apinews.EventTranslation{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"})
+				},
+			},
+			{
+				name:   "article_id 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "" },
+			},
+			{
+				name:   "source 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "" },
+			},
+			{
+				name:   "source_url 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.SourceURL = "" },
+			},
+			{
+				name:   "translations 空のとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations = nil },
+			},
+			{
+				name:   "translations[0].lang が en (ja 以外) のとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = domain.LangEn },
+			},
+			{
+				name:   "translations[0].lang 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = "" },
+			},
+			{
+				name:   "translations[0].title 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Title = "" },
+			},
+			{
+				name:   "translations[0].summary 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Summary = "" },
+			},
+			{
+				name:   "translations[0].body 欠けのとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Body = "" },
+			},
+		}
+		for _, tc := range invalidCases {
+			t.Run(tc.name, func(t *testing.T) {
+				var articleCalls, transCalls int
+				repo := &port.MockNewsRepo{
+					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
+						articleCalls++
+						return true, nil
+					},
+					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
+						transCalls++
+						return nil
+					},
+				}
+				event := validEvent()
+				tc.mutate(&event)
+
+				_, err := ingest.New(repo).Insert(context.Background(), event)
+
+				assert.ErrorIs(t, err, ingest.ErrInvalidEventPayload)
+				assert.Equal(t, 0, articleCalls)
+				assert.Equal(t, 0, transCalls)
+			})
+		}
+
+		dbErr := errors.New("db lost")
+		propagationValidCases := []struct {
+			name          string
+			articleResult bool
+			wantInserted  bool
+		}{
+			{
+				name:          "記事が新規挿入のとき、inserted=true を返す",
+				articleResult: true,
+				wantInserted:  true,
+			},
+			{
+				name:          "記事が重複 (記事・翻訳とも既存) のとき、inserted=false を返す",
+				articleResult: false,
+				wantInserted:  false,
+			},
+		}
+		for _, tc := range propagationValidCases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{
+					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
+						return tc.articleResult, nil
+					},
+					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
+						return nil
+					},
+				}
+
+				inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
+
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantInserted, inserted)
+			})
+		}
+
+		propagationErrorCases := []struct {
+			name          string
+			articleResult bool
+			articleErr    error
+			transErr      error
+		}{
+			{
+				name:       "記事 INSERT で DB 障害のとき、そのエラーが伝播する",
+				articleErr: dbErr,
+			},
+			{
+				name:          "翻訳 INSERT で DB 障害のとき、そのエラーが伝播する",
+				articleResult: true,
+				transErr:      dbErr,
+			},
+		}
+		for _, tc := range propagationErrorCases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{
+					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
+						return tc.articleResult, tc.articleErr
+					},
+					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
+						return tc.transErr
+					},
+				}
+
+				inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
+
+				assert.ErrorIs(t, err, dbErr)
+				assert.False(t, inserted)
+			})
+		}
+
+		t.Run("各フィールドが repo 層の対応する引数にマッピングされる", func(t *testing.T) {
+			// フィールドの取り違えを検出するため、イベントの各値が repo 引数へ届くことを確かめる。
+			var gotArticle domain.Article
+			var gotArticleID, gotLang, gotTitle, gotSummary, gotBody string
 			repo := &port.MockNewsRepo{
-				InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-					articleCalls++
+				InsertArticleFn: func(_ context.Context, a domain.Article) (bool, error) {
+					gotArticle = a
 					return true, nil
 				},
-				InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-					transCalls++
+				InsertTranslationFn: func(_ context.Context, articleID, lang, title, summary, body string) error {
+					gotArticleID = articleID
+					gotLang = lang
+					gotTitle = title
+					gotSummary = summary
+					gotBody = body
 					return nil
 				},
 			}
 			event := validEvent()
-			tc.mutate(&event)
 
 			_, err := ingest.New(repo).Insert(context.Background(), event)
+			require.NoError(t, err)
 
-			assert.ErrorIs(t, err, tc.wantErr)
-			assert.Equal(t, tc.wantArticleCallCount, articleCalls)
-			assert.Equal(t, tc.wantTransCallCount, transCalls)
+			// Article (status は永続化されず派生するため検証対象外)
+			assert.Equal(t, event.ArticleID, gotArticle.ArticleID)
+			assert.Equal(t, event.Source, gotArticle.Source)
+			assert.Equal(t, event.SourceURL, gotArticle.SourceURL)
+			assert.Equal(t, event.Tags, gotArticle.Tags)
+			assert.Equal(t, event.SourcePublishedAt, gotArticle.SourcePublishedAt)
+
+			// ja Translation
+			assert.Equal(t, event.ArticleID, gotArticleID)
+			assert.Equal(t, domain.LangJa, gotLang)
+			assert.Equal(t, "タイトル", gotTitle)
+			assert.Equal(t, "要約", gotSummary)
+			assert.Equal(t, "本文", gotBody)
 		})
-	}
-}
-
-func TestInsert_RepoResultPropagation(t *testing.T) {
-	dbErr := errors.New("db lost")
-
-	cases := []struct {
-		name          string
-		articleResult bool
-		articleErr    error
-		transErr      error
-		wantInserted  bool
-		wantErr       error
-	}{
-		{
-			name:          "新規挿入",
-			articleResult: true,
-			wantInserted:  true,
-		},
-		{
-			name:          "重複は no-op (記事・翻訳とも既存)",
-			articleResult: false,
-			wantInserted:  false,
-		},
-		{
-			name:       "記事 INSERT で DB 障害",
-			articleErr: dbErr,
-			wantErr:    dbErr,
-		},
-		{
-			name:          "翻訳 INSERT で DB 障害",
-			articleResult: true,
-			transErr:      dbErr,
-			wantErr:       dbErr,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &port.MockNewsRepo{
-				InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-					return tc.articleResult, tc.articleErr
-				},
-				InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-					return tc.transErr
-				},
-			}
-
-			inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
-
-			assert.ErrorIs(t, err, tc.wantErr)
-			assert.Equal(t, tc.wantInserted, inserted)
-		})
-	}
-}
-
-// TestInsert_EventToRepoMapping は ArticleCollectedEvent の各フィールドが
-// repo 層 (InsertArticle / InsertTranslation) の引数に正しいフィールドへ
-// マッピングされることを担保する (フィールドの取り違え検出)。
-func TestInsert_EventToRepoMapping(t *testing.T) {
-	var gotArticle domain.Article
-	var gotArticleID, gotLang, gotTitle, gotSummary, gotBody string
-	repo := &port.MockNewsRepo{
-		InsertArticleFn: func(_ context.Context, a domain.Article) (bool, error) {
-			gotArticle = a
-			return true, nil
-		},
-		InsertTranslationFn: func(_ context.Context, articleID, lang, title, summary, body string) error {
-			gotArticleID = articleID
-			gotLang = lang
-			gotTitle = title
-			gotSummary = summary
-			gotBody = body
-			return nil
-		},
-	}
-	event := validEvent()
-
-	_, err := ingest.New(repo).Insert(context.Background(), event)
-	require.NoError(t, err)
-
-	// Article (status は永続化されず派生するため検証対象外)
-	assert.Equal(t, event.ArticleID, gotArticle.ArticleID)
-	assert.Equal(t, event.Source, gotArticle.Source)
-	assert.Equal(t, event.SourceURL, gotArticle.SourceURL)
-	assert.Equal(t, event.Tags, gotArticle.Tags)
-	assert.Equal(t, event.SourcePublishedAt, gotArticle.SourcePublishedAt)
-
-	// ja Translation
-	assert.Equal(t, event.ArticleID, gotArticleID)
-	assert.Equal(t, domain.LangJa, gotLang)
-	assert.Equal(t, "タイトル", gotTitle)
-	assert.Equal(t, "要約", gotSummary)
-	assert.Equal(t, "本文", gotBody)
+	})
 }

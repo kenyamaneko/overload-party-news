@@ -155,72 +155,76 @@ func validEventPayload(t *testing.T, articleID string) []byte {
 	return data
 }
 
-func TestIngestE2E_HappyPath(t *testing.T) {
-	p := setupPipeline(t)
+func TestIngestE2E(t *testing.T) {
+	t.Run("記事取込パイプラインの E2E", func(t *testing.T) {
+		t.Run("有効イベントを publish すると、記事と ja 翻訳が pending で永続化される", func(t *testing.T) {
+			p := setupPipeline(t)
 
-	articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-	sharedEmulator.Publish(t, p.topicID, validEventPayload(t, articleID))
+			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+			sharedEmulator.Publish(t, p.topicID, validEventPayload(t, articleID))
 
-	aw := waitForArticle(t, p.repo, articleID, 5*time.Second)
-	assert.Equal(t, articleID, aw.Article.ArticleID)
-	assert.Equal(t, domain.StatusPending, aw.Article.Status)
-	require.Len(t, aw.Translations, 1)
-	assert.Equal(t, domain.LangJa, aw.Translations[0].Lang)
-	assert.Equal(t, "タイトル", aw.Translations[0].Title)
-}
+			aw := waitForArticle(t, p.repo, articleID, 5*time.Second)
+			assert.Equal(t, articleID, aw.Article.ArticleID)
+			assert.Equal(t, domain.StatusPending, aw.Article.Status)
+			require.Len(t, aw.Translations, 1)
+			assert.Equal(t, domain.LangJa, aw.Translations[0].Lang)
+			assert.Equal(t, "タイトル", aw.Translations[0].Title)
+		})
 
-func TestIngestE2E_Idempotency(t *testing.T) {
-	p := setupPipeline(t)
+		t.Run("同一イベントを 2 回 publish しても、翻訳は増えず created_at も変わらない", func(t *testing.T) {
+			p := setupPipeline(t)
 
-	articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA2"
-	payload := validEventPayload(t, articleID)
+			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA2"
+			payload := validEventPayload(t, articleID)
 
-	sharedEmulator.Publish(t, p.topicID, payload)
-	aw := waitForArticle(t, p.repo, articleID, 5*time.Second)
-	require.Len(t, aw.Translations, 1)
+			sharedEmulator.Publish(t, p.topicID, payload)
+			aw := waitForArticle(t, p.repo, articleID, 5*time.Second)
+			require.Len(t, aw.Translations, 1)
 
-	// 2 回目の publish: 記事・翻訳とも ON CONFLICT DO NOTHING で no-op になる
-	sharedEmulator.Publish(t, p.topicID, payload)
-	// 2 回目の永続化を待つ決定的な手段がないので、短時間経過で結果を観測する
-	time.Sleep(500 * time.Millisecond)
+			// 2 回目の publish: 記事・翻訳とも ON CONFLICT DO NOTHING で no-op になる
+			sharedEmulator.Publish(t, p.topicID, payload)
+			// 2 回目の永続化を待つ決定的な手段がないので、短時間経過で結果を観測する
+			time.Sleep(500 * time.Millisecond)
 
-	aw2, err := loadArticleWithTranslations(p.repo, articleID)
-	require.NoError(t, err)
-	require.Len(t, aw2.Translations, 1, "重複 publish で翻訳は増えない")
-	assert.Equal(t, aw.Translations[0].CreatedAt.UnixNano(), aw2.Translations[0].CreatedAt.UnixNano(),
-		"重複 publish で既存翻訳の created_at は変わらない")
-}
+			aw2, err := loadArticleWithTranslations(p.repo, articleID)
+			require.NoError(t, err)
+			require.Len(t, aw2.Translations, 1, "重複 publish で翻訳は増えない")
+			assert.Equal(t, aw.Translations[0].CreatedAt.UnixNano(), aw2.Translations[0].CreatedAt.UnixNano(),
+				"重複 publish で既存翻訳の created_at は変わらない")
+		})
 
-func TestIngestE2E_InvalidPayload(t *testing.T) {
-	p := setupPipeline(t)
+		t.Run("ja 以外の翻訳を含むイベントは、ACK され DB に永続化されない", func(t *testing.T) {
+			p := setupPipeline(t)
 
-	// translations が ja 以外 → service のバリデーションで ErrInvalidEventPayload → ACK
-	articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA3"
-	data, err := json.Marshal(apinews.ArticleCollectedEvent{
-		ArticleID: articleID,
-		Source:    "aws",
-		SourceURL: "https://aws.amazon.com/" + articleID,
-		Translations: []apinews.EventTranslation{
-			{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"},
-		},
+			// translations が ja 以外 → service のバリデーションで ErrInvalidEventPayload → ACK
+			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA3"
+			data, err := json.Marshal(apinews.ArticleCollectedEvent{
+				ArticleID: articleID,
+				Source:    "aws",
+				SourceURL: "https://aws.amazon.com/" + articleID,
+				Translations: []apinews.EventTranslation{
+					{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"},
+				},
+			})
+			require.NoError(t, err)
+
+			sharedEmulator.Publish(t, p.topicID, data)
+			time.Sleep(500 * time.Millisecond)
+
+			_, err = p.repo.GetArticleByID(context.Background(), articleID)
+			assert.Error(t, err, "invalid payload は DB に永続化されないべき")
+		})
+
+		t.Run("壊れた JSON を publish しても、DB に永続化されない", func(t *testing.T) {
+			p := setupPipeline(t)
+
+			sharedEmulator.Publish(t, p.topicID, []byte("{not-json"))
+			time.Sleep(500 * time.Millisecond)
+
+			// 壊れた payload では article_id が得られないので件数で観測する
+			items, err := p.repo.ListArticles(context.Background(), 10)
+			require.NoError(t, err)
+			assert.Empty(t, items, "壊れた JSON は DB に永続化されないべき")
+		})
 	})
-	require.NoError(t, err)
-
-	sharedEmulator.Publish(t, p.topicID, data)
-	time.Sleep(500 * time.Millisecond)
-
-	_, err = p.repo.GetArticleByID(context.Background(), articleID)
-	assert.Error(t, err, "invalid payload は DB に永続化されないべき")
-}
-
-func TestIngestE2E_MalformedJSON(t *testing.T) {
-	p := setupPipeline(t)
-
-	sharedEmulator.Publish(t, p.topicID, []byte("{not-json"))
-	time.Sleep(500 * time.Millisecond)
-
-	// 壊れた payload では article_id が得られないので件数で観測する
-	items, err := p.repo.ListArticles(context.Background(), 10)
-	require.NoError(t, err)
-	assert.Empty(t, items, "壊れた JSON は DB に永続化されないべき")
 }
