@@ -1,4 +1,4 @@
-.PHONY: build test test-integration vet fmt run tidy db-up db-down db-reset help
+.PHONY: build test test-integration vet fmt run tidy down help
 
 APP := overload-party-news
 
@@ -20,26 +20,12 @@ tidy: ## Tidy dependencies
 fmt: ## Format code
 	gofmt -s -w .
 
-db-up: ## Start local Postgres (docker compose)
-	docker compose up -d postgres
+down: ## Stop the local stack and remove volumes
+	HOST_GOMODCACHE=$$(go env GOMODCACHE) docker compose down -v
 
-db-down: ## Stop local Postgres
-	docker compose down
-
-db-reset: ## Drop volume and recreate DB
-	docker compose down -v
-	docker compose up -d postgres
-
-run: db-up ## Run news server locally against compose Postgres (local env 込み)
-	ENV=local \
-	INTERNAL_PORT=9008 \
-	ADMIN_PORT=9108 \
-	DATABASE_CONN="host=localhost port=5432 dbname=news user=news password=news sslmode=disable" \
-	GOOGLE_CLOUD_PROJECT=news-local \
-	NEWS_ARTICLE_COLLECTED_SUBSCRIPTION=news-article-collected-news-sub \
-	PUBSUB_EMULATOR_HOST=localhost:8085 \
-	INTERNAL_AUTH_SECRET=dev-secret-not-for-prod \
-	go run ./cmd/server
+run: ## Run the full local stack (app + infra) in compose; edit source and restart `news` to reload
+	GOWORK=off GOPRIVATE=github.com/kenyamaneko/* go mod download
+	HOST_GOMODCACHE=$$(go env GOMODCACHE) docker compose up
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \

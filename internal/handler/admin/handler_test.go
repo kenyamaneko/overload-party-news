@@ -109,185 +109,186 @@ func stubGet(repo *port.MockNewsRepo, aw *domain.ArticleWithTranslations, repoEr
 }
 
 func TestList(t *testing.T) {
-	cases := []struct {
-		name        string
-		query       string
-		stubItems   []domain.ArticleWithTranslations
-		wantStatus  int
-		wantBodyHas []string
-		wantPubBtn  bool
-		wantRejBtn  bool
-	}{
-		// status クエリ受理範囲
-		{
-			name:       "limit のみで全件 (status 未指定 / all 同等)",
-			query:      "?limit=50",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "status=all は全件",
-			query:      "?status=all&limit=50",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "status=pending",
-			query:      "?status=pending&limit=50",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "status=published",
-			query:      "?status=published&limit=50",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "status=rejected",
-			query:      "?status=rejected&limit=50",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "limit 未指定は 400 (デフォルト値へのフォールバックは行わない)",
-			query:      "?status=pending",
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "未知 status は 400",
-			query:      "?status=unknown&limit=50",
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "limit 非整数は 400",
-			query:      "?limit=xxx",
-			wantStatus: http.StatusBadRequest,
-		},
-		// ja タイトル表示 (pending 記事なので承認/却下ボタンは両方表示される)
-		{
-			name:        "ja 翻訳ありは ja タイトルが表示される",
-			query:       "?limit=50",
-			stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangJa, Title: "ja-title"}}}},
-			wantStatus:  http.StatusOK,
-			wantBodyHas: []string{"ja-title"},
-			wantPubBtn:  true,
-			wantRejBtn:  true,
-		},
-		{
-			name:        "en のみのとき [ja 未作成] プレースホルダ",
-			query:       "?limit=50",
-			stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangEn, Title: "en-title"}}}},
-			wantStatus:  http.StatusOK,
-			wantBodyHas: []string{"[ja 未作成]"},
-			wantPubBtn:  true,
-			wantRejBtn:  true,
-		},
-		{
-			name:        "翻訳なしのとき [ja 未作成] プレースホルダ",
-			query:       "?limit=50",
-			stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending)}},
-			wantStatus:  http.StatusOK,
-			wantBodyHas: []string{"[ja 未作成]"},
-			wantPubBtn:  true,
-			wantRejBtn:  true,
-		},
-		// status に応じたボタン表示 (FEATURE_SPEC)
-		{
-			name:       "pending は承認/却下ボタン両方",
-			query:      "?limit=50",
-			stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusPending)},
-			wantStatus: http.StatusOK,
-			wantPubBtn: true,
-			wantRejBtn: true,
-		},
-		{
-			name:       "published は却下ボタンのみ",
-			query:      "?limit=50",
-			stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusPublished)},
-			wantStatus: http.StatusOK,
-			wantPubBtn: false,
-			wantRejBtn: true,
-		},
-		{
-			name:       "rejected は承認ボタンのみ",
-			query:      "?limit=50",
-			stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusRejected)},
-			wantStatus: http.StatusOK,
-			wantPubBtn: true,
-			wantRejBtn: false,
-		},
-	}
+	t.Run("記事一覧の表示", func(t *testing.T) {
+		cases := []struct {
+			name        string
+			query       string
+			stubItems   []domain.ArticleWithTranslations
+			wantStatus  int
+			wantBodyHas []string
+			wantPubBtn  bool
+			wantRejBtn  bool
+		}{
+			{
+				name:       "status 未指定 + limit=50 のとき、200 になる",
+				query:      "?limit=50",
+				wantStatus: http.StatusOK,
+			},
+			{
+				name:       "status=all + limit=50 のとき、200 になる",
+				query:      "?status=all&limit=50",
+				wantStatus: http.StatusOK,
+			},
+			{
+				name:       "status=pending + limit=50 のとき、200 になる",
+				query:      "?status=pending&limit=50",
+				wantStatus: http.StatusOK,
+			},
+			{
+				name:       "status=published + limit=50 のとき、200 になる",
+				query:      "?status=published&limit=50",
+				wantStatus: http.StatusOK,
+			},
+			{
+				name:       "status=rejected + limit=50 のとき、200 になる",
+				query:      "?status=rejected&limit=50",
+				wantStatus: http.StatusOK,
+			},
+			{
+				name:       "limit 未指定のとき、400 になる (デフォルト値へフォールバックしない)",
+				query:      "?status=pending",
+				wantStatus: http.StatusBadRequest,
+			},
+			{
+				name:       "未知の status のとき、400 になる",
+				query:      "?status=unknown&limit=50",
+				wantStatus: http.StatusBadRequest,
+			},
+			{
+				name:       "limit が非整数のとき、400 になる",
+				query:      "?limit=xxx",
+				wantStatus: http.StatusBadRequest,
+			},
+			{
+				name:        "ja 翻訳ありのとき、ja タイトルが表示される",
+				query:       "?limit=50",
+				stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangJa, Title: "ja-title"}}}},
+				wantStatus:  http.StatusOK,
+				wantBodyHas: []string{"ja-title"},
+				wantPubBtn:  true,
+				wantRejBtn:  true,
+			},
+			{
+				name:        "en 翻訳のみのとき、[ja 未作成] プレースホルダが表示される",
+				query:       "?limit=50",
+				stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangEn, Title: "en-title"}}}},
+				wantStatus:  http.StatusOK,
+				wantBodyHas: []string{"[ja 未作成]"},
+				wantPubBtn:  true,
+				wantRejBtn:  true,
+			},
+			{
+				name:        "翻訳なしのとき、[ja 未作成] プレースホルダが表示される",
+				query:       "?limit=50",
+				stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending)}},
+				wantStatus:  http.StatusOK,
+				wantBodyHas: []string{"[ja 未作成]"},
+				wantPubBtn:  true,
+				wantRejBtn:  true,
+			},
+			{
+				name:       "pending 記事のとき、承認ボタンと却下ボタンが両方表示される",
+				query:      "?limit=50",
+				stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusPending)},
+				wantStatus: http.StatusOK,
+				wantPubBtn: true,
+				wantRejBtn: true,
+			},
+			{
+				name:       "published 記事のとき、却下ボタンのみ表示される",
+				query:      "?limit=50",
+				stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusPublished)},
+				wantStatus: http.StatusOK,
+				wantPubBtn: false,
+				wantRejBtn: true,
+			},
+			{
+				name:       "rejected 記事のとき、承認ボタンのみ表示される",
+				query:      "?limit=50",
+				stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusRejected)},
+				wantStatus: http.StatusOK,
+				wantPubBtn: true,
+				wantRejBtn: false,
+			},
+		}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &port.MockNewsRepo{}
-			stubList(repo, tc.stubItems)
-			req := httptest.NewRequest(http.MethodGet, "/admin/articles"+tc.query, nil)
-			w := httptest.NewRecorder()
-			newAdminServer(t, repo).ServeHTTP(w, req)
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{}
+				stubList(repo, tc.stubItems)
+				req := httptest.NewRequest(http.MethodGet, "/admin/articles"+tc.query, nil)
+				w := httptest.NewRecorder()
+				newAdminServer(t, repo).ServeHTTP(w, req)
 
-			assert.Equal(t, tc.wantStatus, w.Code)
-			body := w.Body.String()
-			for _, s := range tc.wantBodyHas {
-				assert.Contains(t, body, s)
-			}
-			assert.Equal(t, tc.wantPubBtn, strings.Contains(body, `/publish"`), "承認ボタンの存在")
-			assert.Equal(t, tc.wantRejBtn, strings.Contains(body, `/reject"`), "却下ボタンの存在")
-		})
-	}
+				assert.Equal(t, tc.wantStatus, w.Code)
+				body := w.Body.String()
+				for _, s := range tc.wantBodyHas {
+					assert.Contains(t, body, s)
+				}
+				assert.Equal(t, tc.wantPubBtn, strings.Contains(body, `/publish"`), "承認ボタンの存在")
+				assert.Equal(t, tc.wantRejBtn, strings.Contains(body, `/reject"`), "却下ボタンの存在")
+			})
+		}
+	})
 }
 
 func TestGetEdit(t *testing.T) {
-	existing := sampleArticleWithJa("01", domain.StatusPending)
+	t.Run("記事編集画面の表示", func(t *testing.T) {
+		existing := sampleArticleWithJa("01", domain.StatusPending)
 
-	cases := []struct {
-		name        string
-		repoReturn  *domain.ArticleWithTranslations
-		repoErr     error
-		wantStatus  int
-		wantBodyHas []string
-	}{
-		{
-			name:       "存在する記事は 200",
-			repoReturn: &existing,
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "存在しない記事は 404",
-			repoErr:    port.ErrNotFound,
-			wantStatus: http.StatusNotFound,
-		},
-		{
-			name: "全言語タブ表示と既存翻訳の埋め込み (ja のみ作成済み)",
-			repoReturn: &domain.ArticleWithTranslations{
-				Article: sampleArticle("01", domain.StatusPending),
-				Translations: []domain.Translation{
-					{Lang: domain.LangJa, Title: "初期タイトル", Summary: "初期要約", Body: "初期本文"},
+		cases := []struct {
+			name        string
+			repoReturn  *domain.ArticleWithTranslations
+			repoErr     error
+			wantStatus  int
+			wantBodyHas []string
+		}{
+			{
+				name:       "存在する記事のとき、200 になる",
+				repoReturn: &existing,
+				wantStatus: http.StatusOK,
+			},
+			{
+				name:       "存在しない記事のとき、404 になる",
+				repoErr:    port.ErrNotFound,
+				wantStatus: http.StatusNotFound,
+			},
+			{
+				name: "ja のみ作成済みのとき、全言語タブと既存翻訳が埋め込まれる",
+				repoReturn: &domain.ArticleWithTranslations{
+					Article: sampleArticle("01", domain.StatusPending),
+					Translations: []domain.Translation{
+						{Lang: domain.LangJa, Title: "初期タイトル", Summary: "初期要約", Body: "初期本文"},
+					},
+				},
+				wantStatus: http.StatusOK,
+				wantBodyHas: []string{
+					`value="初期タイトル"`,
+					"初期要約",
+					"初期本文",
+					`hx-post="/admin/articles/01/translations/ja"`,
+					`hx-post="/admin/articles/01/translations/en"`,
+					"未作成", // en タブのプレースホルダ
 				},
 			},
-			wantStatus: http.StatusOK,
-			wantBodyHas: []string{
-				`value="初期タイトル"`,
-				"初期要約",
-				"初期本文",
-				`hx-post="/admin/articles/01/translations/ja"`,
-				`hx-post="/admin/articles/01/translations/en"`,
-				"未作成", // en タブのプレースホルダ
-			},
-		},
-	}
+		}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &port.MockNewsRepo{}
-			stubGet(repo, tc.repoReturn, tc.repoErr)
-			req := httptest.NewRequest(http.MethodGet, "/admin/articles/01", nil)
-			w := httptest.NewRecorder()
-			newAdminServer(t, repo).ServeHTTP(w, req)
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{}
+				stubGet(repo, tc.repoReturn, tc.repoErr)
+				req := httptest.NewRequest(http.MethodGet, "/admin/articles/01", nil)
+				w := httptest.NewRecorder()
+				newAdminServer(t, repo).ServeHTTP(w, req)
 
-			assert.Equal(t, tc.wantStatus, w.Code)
-			body := w.Body.String()
-			for _, s := range tc.wantBodyHas {
-				assert.Contains(t, body, s)
-			}
-		})
-	}
+				assert.Equal(t, tc.wantStatus, w.Code)
+				body := w.Body.String()
+				for _, s := range tc.wantBodyHas {
+					assert.Contains(t, body, s)
+				}
+			})
+		}
+	})
 }
 
 // upsertArgs は UpsertTranslation がリポジトリへ転送した引数を捕捉する。
@@ -296,190 +297,198 @@ type upsertArgs struct {
 }
 
 func TestUpsertTranslation(t *testing.T) {
-	cases := []struct {
-		name         string
-		lang         string
-		title        string
-		summary      string
-		body         string
-		extraHeaders map[string]string
-		repoErr      error
-		wantStatus   int
-		wantHXHeader string
-		wantLocation string
-		wantUpsert   upsertArgs
-	}{
-		{
-			name:         "HTMX 正常 (ja) は 200 + HX-Redirect で編集画面へ",
-			lang:         "ja",
-			title:        "新タイトル",
-			summary:      "新要約",
-			body:         "新本文",
-			extraHeaders: map[string]string{"HX-Request": "true"},
-			wantStatus:   http.StatusOK,
-			wantHXHeader: "/admin/articles/01",
-			wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
-		},
-		{
-			name:         "非 HTMX 正常 (ja) は 303 + Location で編集画面へ",
-			lang:         "ja",
-			title:        "新タイトル",
-			summary:      "新要約",
-			body:         "新本文",
-			wantStatus:   http.StatusSeeOther,
-			wantLocation: "/admin/articles/01",
-			wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
-		},
-		{
-			name:         "正常 (en)",
-			lang:         "en",
-			title:        "t",
-			summary:      "s",
-			body:         "b",
-			extraHeaders: map[string]string{"HX-Request": "true"},
-			wantStatus:   http.StatusOK,
-			wantHXHeader: "/admin/articles/01",
-			wantUpsert:   upsertArgs{articleID: "01", lang: "en", title: "t", summary: "s", body: "b"},
-		},
-		{
-			name:         "空 title は 400",
-			lang:         "ja",
-			title:        "",
-			summary:      "s",
-			body:         "b",
-			extraHeaders: map[string]string{"HX-Request": "true"},
-			wantStatus:   http.StatusBadRequest,
-		},
-		{
-			name:         "空 summary は 400",
-			lang:         "ja",
-			title:        "t",
-			summary:      "",
-			body:         "b",
-			extraHeaders: map[string]string{"HX-Request": "true"},
-			wantStatus:   http.StatusBadRequest,
-		},
-		{
-			name:         "空 body は 400",
-			lang:         "ja",
-			title:        "t",
-			summary:      "s",
-			body:         "",
-			extraHeaders: map[string]string{"HX-Request": "true"},
-			wantStatus:   http.StatusBadRequest,
-		},
-		{
-			name:         "未対応 lang (DB CHECK 違反 = ErrInvalidPersistedValue) は 400",
-			lang:         "fr",
-			title:        "t",
-			summary:      "s",
-			body:         "b",
-			extraHeaders: map[string]string{"HX-Request": "true"},
-			repoErr:      fmt.Errorf("lang=%q: %w", "fr", port.ErrInvalidPersistedValue),
-			wantStatus:   http.StatusBadRequest,
-			// usecase バリデーションは通過し lang はリポジトリ (DB CHECK) まで届く。
-			wantUpsert: upsertArgs{articleID: "01", lang: "fr", title: "t", summary: "s", body: "b"},
-		},
-	}
+	t.Run("翻訳の登録・更新", func(t *testing.T) {
+		cases := []struct {
+			name         string
+			lang         string
+			title        string
+			summary      string
+			body         string
+			extraHeaders map[string]string
+			repoErr      error
+			wantStatus   int
+			wantHXHeader string
+			wantLocation string
+			wantUpsert   upsertArgs
+		}{
+			{
+				name:         "HTMX リクエストで ja を登録すると、200 + HX-Redirect で編集画面へ誘導する",
+				lang:         "ja",
+				title:        "新タイトル",
+				summary:      "新要約",
+				body:         "新本文",
+				extraHeaders: map[string]string{"HX-Request": "true"},
+				wantStatus:   http.StatusOK,
+				wantHXHeader: "/admin/articles/01",
+				wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
+			},
+			{
+				name:         "非 HTMX リクエストで ja を登録すると、303 + Location で編集画面へ誘導する",
+				lang:         "ja",
+				title:        "新タイトル",
+				summary:      "新要約",
+				body:         "新本文",
+				wantStatus:   http.StatusSeeOther,
+				wantLocation: "/admin/articles/01",
+				wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
+			},
+			{
+				name:         "HTMX リクエストで en を登録すると、200 + HX-Redirect で編集画面へ誘導する",
+				lang:         "en",
+				title:        "t",
+				summary:      "s",
+				body:         "b",
+				extraHeaders: map[string]string{"HX-Request": "true"},
+				wantStatus:   http.StatusOK,
+				wantHXHeader: "/admin/articles/01",
+				wantUpsert:   upsertArgs{articleID: "01", lang: "en", title: "t", summary: "s", body: "b"},
+			},
+			{
+				name:         "title が空のとき、400 になる",
+				lang:         "ja",
+				title:        "",
+				summary:      "s",
+				body:         "b",
+				extraHeaders: map[string]string{"HX-Request": "true"},
+				wantStatus:   http.StatusBadRequest,
+			},
+			{
+				name:         "summary が空のとき、400 になる",
+				lang:         "ja",
+				title:        "t",
+				summary:      "",
+				body:         "b",
+				extraHeaders: map[string]string{"HX-Request": "true"},
+				wantStatus:   http.StatusBadRequest,
+			},
+			{
+				name:         "body が空のとき、400 になる",
+				lang:         "ja",
+				title:        "t",
+				summary:      "s",
+				body:         "",
+				extraHeaders: map[string]string{"HX-Request": "true"},
+				wantStatus:   http.StatusBadRequest,
+			},
+			{
+				name:         "未対応 lang が DB CHECK 違反 (ErrInvalidPersistedValue) になるとき、400 になる",
+				lang:         "fr",
+				title:        "t",
+				summary:      "s",
+				body:         "b",
+				extraHeaders: map[string]string{"HX-Request": "true"},
+				repoErr:      fmt.Errorf("lang=%q: %w", "fr", port.ErrInvalidPersistedValue),
+				wantStatus:   http.StatusBadRequest,
+				// usecase バリデーションは通過し lang はリポジトリ (DB CHECK) まで届く。
+				wantUpsert: upsertArgs{articleID: "01", lang: "fr", title: "t", summary: "s", body: "b"},
+			},
+		}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var gotUpsert upsertArgs
-			repo := &port.MockNewsRepo{
-				UpsertTranslationFn: func(_ context.Context, articleID, lang, title, summary, body string) error {
-					gotUpsert = upsertArgs{articleID, lang, title, summary, body}
-					return tc.repoErr
-				},
-			}
-			form := url.Values{"title": {tc.title}, "summary": {tc.summary}, "body": {tc.body}}
-			req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/articles/01/translations/%s", tc.lang), strings.NewReader(form.Encode()))
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			for k, v := range tc.extraHeaders {
-				req.Header.Set(k, v)
-			}
-			w := httptest.NewRecorder()
-			newAdminServer(t, repo).ServeHTTP(w, req)
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				var gotUpsert upsertArgs
+				repo := &port.MockNewsRepo{
+					UpsertTranslationFn: func(_ context.Context, articleID, lang, title, summary, body string) error {
+						gotUpsert = upsertArgs{articleID, lang, title, summary, body}
+						return tc.repoErr
+					},
+				}
+				form := url.Values{"title": {tc.title}, "summary": {tc.summary}, "body": {tc.body}}
+				req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/articles/01/translations/%s", tc.lang), strings.NewReader(form.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				for k, v := range tc.extraHeaders {
+					req.Header.Set(k, v)
+				}
+				w := httptest.NewRecorder()
+				newAdminServer(t, repo).ServeHTTP(w, req)
 
-			assert.Equal(t, tc.wantStatus, w.Code)
-			assert.Equal(t, tc.wantHXHeader, w.Header().Get("HX-Redirect"))
-			assert.Equal(t, tc.wantLocation, w.Header().Get("Location"))
-			// バリデーション 400 ケースは writer 未到達のため wantUpsert はゼロ値。
-			assert.Equal(t, tc.wantUpsert, gotUpsert)
-		})
-	}
+				assert.Equal(t, tc.wantStatus, w.Code)
+				assert.Equal(t, tc.wantHXHeader, w.Header().Get("HX-Redirect"))
+				assert.Equal(t, tc.wantLocation, w.Header().Get("Location"))
+				// バリデーション 400 ケースは writer 未到達のため wantUpsert はゼロ値。
+				assert.Equal(t, tc.wantUpsert, gotUpsert)
+			})
+		}
+	})
 }
 
 func TestPublish(t *testing.T) {
 	const articleID = "01"
-	successAW := sampleArticleWithJa(articleID, domain.StatusPublished)
+	t.Run("記事の承認", func(t *testing.T) {
+		successAW := sampleArticleWithJa(articleID, domain.StatusPublished)
 
-	cases := []struct {
-		name        string
-		path        string
-		hxTarget    string
-		repoErr     error
-		wantStatus  int
-		wantHXRedir string
-		wantBodyHas string
-	}{
-		{
-			name:        "HX-Target=row-{id} は 200 + 行フラグメント",
-			path:        "/admin/articles/" + articleID + "/publish",
-			hxTarget:    "row-" + articleID,
-			wantStatus:  http.StatusOK,
-			wantBodyHas: `id="row-` + articleID + `"`,
-		},
-		{
-			name:        "HX-Target=row 以外は HX-Redirect でリストへ",
-			path:        "/admin/articles/" + articleID + "/publish",
-			hxTarget:    "body",
-			wantStatus:  http.StatusOK,
-			wantHXRedir: "/admin/articles",
-		},
-		{
-			name:       "存在しない記事は 404",
-			path:       "/admin/articles/ghost/publish",
-			repoErr:    fmt.Errorf("not found: %w", port.ErrNotFound),
-			wantStatus: http.StatusNotFound,
-		},
-	}
+		cases := []struct {
+			name        string
+			path        string
+			hxTarget    string
+			repoErr     error
+			wantStatus  int
+			wantHXRedir string
+			wantBodyHas string
+		}{
+			{
+				name:        "HX-Target が row-{id} のとき、200 + 行フラグメントを返す",
+				path:        "/admin/articles/" + articleID + "/publish",
+				hxTarget:    "row-" + articleID,
+				wantStatus:  http.StatusOK,
+				wantBodyHas: `id="row-` + articleID + `"`,
+			},
+			{
+				name:        "HX-Target が row 以外のとき、HX-Redirect でリストへ誘導する",
+				path:        "/admin/articles/" + articleID + "/publish",
+				hxTarget:    "body",
+				wantStatus:  http.StatusOK,
+				wantHXRedir: "/admin/articles",
+			},
+			{
+				name:       "存在しない記事のとき、404 になる",
+				path:       "/admin/articles/ghost/publish",
+				repoErr:    fmt.Errorf("not found: %w", port.ErrNotFound),
+				wantStatus: http.StatusNotFound,
+			},
+		}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &port.MockNewsRepo{
-				PublishFn: func(_ context.Context, _ string, _ string, _ time.Time) error {
-					return tc.repoErr
-				},
-			}
-			stubGet(repo, &successAW, nil)
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{
+					PublishFn: func(_ context.Context, _ string, _ string, _ time.Time) error {
+						return tc.repoErr
+					},
+				}
+				stubGet(repo, &successAW, nil)
 
-			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
-			req.Header.Set("HX-Request", "true")
-			req.Header.Set("HX-Target", tc.hxTarget)
-			w := httptest.NewRecorder()
-			newAdminServer(t, repo).ServeHTTP(w, req)
+				req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+				req.Header.Set("HX-Request", "true")
+				req.Header.Set("HX-Target", tc.hxTarget)
+				w := httptest.NewRecorder()
+				newAdminServer(t, repo).ServeHTTP(w, req)
 
-			assert.Equal(t, tc.wantStatus, w.Code)
-			assert.Equal(t, tc.wantHXRedir, w.Header().Get("HX-Redirect"))
-			// wantBodyHas が空のケースは Contains が常に通過する。
-			assert.Contains(t, w.Body.String(), tc.wantBodyHas)
-		})
-	}
+				assert.Equal(t, tc.wantStatus, w.Code)
+				assert.Equal(t, tc.wantHXRedir, w.Header().Get("HX-Redirect"))
+				// wantBodyHas が空のケースは Contains が常に通過する。
+				assert.Contains(t, w.Body.String(), tc.wantBodyHas)
+			})
+		}
+	})
 }
 
 func TestReject(t *testing.T) {
-	repo := &port.MockNewsRepo{
-		RejectFn: func(_ context.Context, _ string, _ string, _ time.Time) error { return nil },
-	}
-	aw := sampleArticleWithJa("01", domain.StatusRejected)
-	stubGet(repo, &aw, nil)
-	req := httptest.NewRequest(http.MethodPost, "/admin/articles/01/reject", nil)
-	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Target", "row-01")
-	w := httptest.NewRecorder()
-	newAdminServer(t, repo).ServeHTTP(w, req)
+	t.Run("記事の却下", func(t *testing.T) {
+		t.Run("HX-Target が row-01 のとき、200 で行フラグメントを返し rejected を含む", func(t *testing.T) {
+			repo := &port.MockNewsRepo{
+				RejectFn: func(_ context.Context, _ string, _ string, _ time.Time) error { return nil },
+			}
+			aw := sampleArticleWithJa("01", domain.StatusRejected)
+			stubGet(repo, &aw, nil)
+			req := httptest.NewRequest(http.MethodPost, "/admin/articles/01/reject", nil)
+			req.Header.Set("HX-Request", "true")
+			req.Header.Set("HX-Target", "row-01")
+			w := httptest.NewRecorder()
+			newAdminServer(t, repo).ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), `id="row-01"`)
-	assert.Contains(t, w.Body.String(), "rejected")
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Contains(t, w.Body.String(), `id="row-01"`)
+			assert.Contains(t, w.Body.String(), "rejected")
+		})
+	})
 }
