@@ -24,6 +24,8 @@ jobs:
   push-image:
     runs-on: ubicloud-standard-2
     timeout-minutes: 30
+    # WIF_PROVIDER / CI_SERVICE_ACCOUNT が prod environment スコープの変数として定義されている
+    environment: prod
     steps:
       - name: Checkout
         uses: actions/checkout@v4
