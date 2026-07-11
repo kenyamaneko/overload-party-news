@@ -3,7 +3,7 @@ name: CI
 # PR の品質ゲート。ブランチ保護の required status check として使う。
 on:
   pull_request:
-    branches: [main, develop, "release/**"]
+    branches: [main]
 
 permissions:
   contents: read
