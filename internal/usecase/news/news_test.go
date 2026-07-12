@@ -15,44 +15,60 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
+// validLimit は境界を狙わない「任意の有効な limit」を表す。
+const validLimit = 10
+
 func TestList(t *testing.T) {
 	t.Run("公開記事一覧の取得", func(t *testing.T) {
+		pub := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+		rows := []domain.PublishedArticleSummary{
+			{ArticleID: "a1", Source: string(apinews.SourceAws), Title: "T1", Summary: "S1", Tags: []string{"x"}, PublishedAt: pub},
+			{ArticleID: "a2", Source: string(apinews.SourceGoogleCloud), Title: "T2", Summary: "S2", Tags: []string{"y"}, PublishedAt: pub},
+		}
+
 		validCases := []struct {
-			name      string
-			lang      string
-			limit     int
-			wantCount int
+			name  string
+			lang  string
+			limit int
 		}{
 			{
-				name:      "lang=ja + limit=1 (下限) のとき、1 件返す",
-				lang:      domain.LangJa,
-				limit:     1,
-				wantCount: 1,
+				name:  "lang=ja + limit=1 (下限) のとき、querier へ lang/limit を転送し、返った行を射影して返す",
+				lang:  domain.LangJa,
+				limit: 1,
 			},
 			{
-				name:      "lang=ja + limit が上限のとき、上限件数を返す",
-				lang:      domain.LangJa,
-				limit:     news.ListLimitMax,
-				wantCount: news.ListLimitMax,
+				name:  "lang=ja + limit が上限のとき、querier へ lang/limit を転送し、返った行を射影して返す",
+				lang:  domain.LangJa,
+				limit: news.ListLimitMax,
 			},
 			{
-				name:      "lang=en のとき、通過して 1 件返す",
-				lang:      domain.LangEn,
-				limit:     1,
-				wantCount: 1,
+				name:  "lang=en のとき、querier へ lang/limit を転送し、返った行を射影して返す",
+				lang:  domain.LangEn,
+				limit: validLimit,
 			},
 		}
 		for _, tc := range validCases {
 			t.Run(tc.name, func(t *testing.T) {
+				var gotLang string
+				var gotLimit int
 				repo := &port.MockNewsRepo{
-					ListPublishedFn: func(_ context.Context, _ string, limit int) ([]domain.PublishedArticleSummary, error) {
-						return make([]domain.PublishedArticleSummary, limit), nil
+					ListPublishedFn: func(_ context.Context, lang string, limit int) ([]domain.PublishedArticleSummary, error) {
+						gotLang, gotLimit = lang, limit
+						return rows, nil
 					},
 				}
+
 				got, err := news.New(repo).List(context.Background(), tc.lang, tc.limit)
 
 				require.NoError(t, err)
-				assert.Len(t, got, tc.wantCount)
+				assert.Equal(t, tc.lang, gotLang)
+				assert.Equal(t, tc.limit, gotLimit)
+				assert.Len(t, got, len(rows))
+				assert.Equal(t, "a1", got[0].ArticleID)
+				assert.Equal(t, "T1", got[0].Title)
+				assert.Equal(t, apinews.SourceAws, got[0].Source)
+				assert.Equal(t, "a2", got[1].ArticleID)
+				assert.Equal(t, apinews.SourceGoogleCloud, got[1].Source)
 			})
 		}
 
@@ -63,37 +79,37 @@ func TestList(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name:    "lang 未指定のとき、ErrLangRequired になる",
+				name:    "lang 未指定のとき、querier を呼ばず ErrLangRequired になる",
 				lang:    "",
 				limit:   news.ListLimitMax,
 				wantErr: news.ErrLangRequired,
 			},
 			{
-				name:    "lang 対応外のとき、ErrUnsupportedLang になる",
+				name:    "lang 対応外のとき、querier を呼ばず ErrUnsupportedLang になる",
 				lang:    "fr",
 				limit:   news.ListLimitMax,
 				wantErr: news.ErrUnsupportedLang,
 			},
 			{
-				name:    "lang=JA (大文字) のとき、ErrUnsupportedLang になる",
+				name:    "lang=JA (大文字) のとき、querier を呼ばず ErrUnsupportedLang になる",
 				lang:    "JA",
 				limit:   news.ListLimitMax,
 				wantErr: news.ErrUnsupportedLang,
 			},
 			{
-				name:    "limit=0 のとき、ErrInvalidLimit になる",
+				name:    "limit=0 のとき、querier を呼ばず ErrInvalidLimit になる",
 				lang:    domain.LangJa,
 				limit:   0,
 				wantErr: news.ErrInvalidLimit,
 			},
 			{
-				name:    "limit=-1 (負値) のとき、ErrInvalidLimit になる",
+				name:    "limit=-1 (負値) のとき、querier を呼ばず ErrInvalidLimit になる",
 				lang:    domain.LangJa,
 				limit:   -1,
 				wantErr: news.ErrInvalidLimit,
 			},
 			{
-				name:    "limit が上限+1 のとき、ErrInvalidLimit になる",
+				name:    "limit が上限+1 のとき、querier を呼ばず ErrInvalidLimit になる",
 				lang:    domain.LangJa,
 				limit:   news.ListLimitMax + 1,
 				wantErr: news.ErrInvalidLimit,
@@ -101,17 +117,30 @@ func TestList(t *testing.T) {
 		}
 		for _, tc := range invalidCases {
 			t.Run(tc.name, func(t *testing.T) {
-				repo := &port.MockNewsRepo{
-					ListPublishedFn: func(_ context.Context, _ string, limit int) ([]domain.PublishedArticleSummary, error) {
-						return make([]domain.PublishedArticleSummary, limit), nil
-					},
-				}
+				// ListPublishedFn を未設定にすることで、入力検証を抜けて querier に到達したら
+				// MockNewsRepo が panic する = querier 未到達を強制する。
+				repo := &port.MockNewsRepo{}
+
 				got, err := news.New(repo).List(context.Background(), tc.lang, tc.limit)
 
 				assert.ErrorIs(t, err, tc.wantErr)
-				assert.Empty(t, got)
+				assert.Nil(t, got)
 			})
 		}
+
+		t.Run("querier がエラーを返すとき、List はそのままエラーを伝播する", func(t *testing.T) {
+			wantErr := errors.New("querier: db connection lost")
+			repo := &port.MockNewsRepo{
+				ListPublishedFn: func(_ context.Context, _ string, _ int) ([]domain.PublishedArticleSummary, error) {
+					return nil, wantErr
+				},
+			}
+
+			got, err := news.New(repo).List(context.Background(), domain.LangJa, validLimit)
+
+			assert.ErrorIs(t, err, wantErr)
+			assert.Nil(t, got)
+		})
 	})
 }
 
