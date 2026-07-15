@@ -211,43 +211,5 @@ func TestInsert(t *testing.T) {
 				assert.False(t, inserted)
 			})
 		}
-
-		t.Run("各フィールドが repo 層の対応する引数にマッピングされる", func(t *testing.T) {
-			// フィールドの取り違えを検出するため、イベントの各値が repo 引数へ届くことを確かめる。
-			var gotArticle domain.Article
-			var gotArticleID, gotLang, gotTitle, gotSummary, gotBody string
-			repo := &port.MockNewsRepo{
-				InsertArticleFn: func(_ context.Context, a domain.Article) (bool, error) {
-					gotArticle = a
-					return true, nil
-				},
-				InsertTranslationFn: func(_ context.Context, articleID, lang, title, summary, body string) error {
-					gotArticleID = articleID
-					gotLang = lang
-					gotTitle = title
-					gotSummary = summary
-					gotBody = body
-					return nil
-				},
-			}
-			event := validEvent()
-
-			_, err := ingest.New(repo).Insert(context.Background(), event)
-			require.NoError(t, err)
-
-			// Article (status は永続化されず派生するため検証対象外)
-			assert.Equal(t, event.ArticleID, gotArticle.ArticleID)
-			assert.Equal(t, event.Source, gotArticle.Source)
-			assert.Equal(t, event.SourceURL, gotArticle.SourceURL)
-			assert.Equal(t, event.Tags, gotArticle.Tags)
-			assert.Equal(t, event.SourcePublishedAt, gotArticle.SourcePublishedAt)
-
-			// ja Translation
-			assert.Equal(t, event.ArticleID, gotArticleID)
-			assert.Equal(t, domain.LangJa, gotLang)
-			assert.Equal(t, "タイトル", gotTitle)
-			assert.Equal(t, "要約", gotSummary)
-			assert.Equal(t, "本文", gotBody)
-		})
 	})
 }

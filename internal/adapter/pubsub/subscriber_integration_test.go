@@ -157,7 +157,7 @@ func validEventPayload(t *testing.T, articleID string) []byte {
 
 func TestIngestE2E(t *testing.T) {
 	t.Run("記事取込パイプラインの E2E", func(t *testing.T) {
-		t.Run("有効イベントを publish すると、記事と ja 翻訳が pending で永続化される", func(t *testing.T) {
+		t.Run("有効イベントを publish すると、記事と ja 翻訳が全フィールドで pending 永続化される", func(t *testing.T) {
 			p := setupPipeline(t)
 
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
@@ -166,9 +166,16 @@ func TestIngestE2E(t *testing.T) {
 			aw := waitForArticle(t, p.repo, articleID, 5*time.Second)
 			assert.Equal(t, articleID, aw.Article.ArticleID)
 			assert.Equal(t, domain.StatusPending, aw.Article.Status)
+			assert.Equal(t, "aws", aw.Article.Source)
+			assert.Equal(t, "https://aws.amazon.com/"+articleID, aw.Article.SourceURL)
+			assert.Equal(t, []string{"compute"}, aw.Article.Tags)
+			require.NotNil(t, aw.Article.SourcePublishedAt)
+			assert.True(t, aw.Article.SourcePublishedAt.Equal(time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)))
 			require.Len(t, aw.Translations, 1)
 			assert.Equal(t, domain.LangJa, aw.Translations[0].Lang)
 			assert.Equal(t, "タイトル", aw.Translations[0].Title)
+			assert.Equal(t, "要約", aw.Translations[0].Summary)
+			assert.Equal(t, "本文", aw.Translations[0].Body)
 		})
 
 		t.Run("同一イベントを 2 回 publish しても、翻訳は増えず created_at も変わらない", func(t *testing.T) {
