@@ -32,7 +32,7 @@ func validEventJSON(t *testing.T) []byte {
 }
 
 func TestHandle(t *testing.T) {
-	t.Run("ArticleCollected イベントの処理", func(t *testing.T) {
+	t.Run("記事収集イベントの処理", func(t *testing.T) {
 		ackCases := []struct {
 			name                 string
 			payload              []byte
