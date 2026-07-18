@@ -88,6 +88,18 @@ func seedWithJa(t *testing.T, repo *postgres.NewsRepository, id string, status d
 	return article
 }
 
+// seedPublishedAt は ja 翻訳を持つ記事を 1 件 INSERT し、published_at を指定時刻に固定して公開する。
+func seedPublishedAt(t *testing.T, ctx context.Context, repo *postgres.NewsRepository, id string, publishedAt time.Time) {
+	t.Helper()
+	_, err := repo.InsertArticle(ctx, domain.Article{
+		ArticleID: id, Source: "aws", SourceURL: "https://example.com/" + id,
+		Tags: []string{}, Status: domain.StatusPending,
+	})
+	require.NoError(t, err)
+	require.NoError(t, repo.InsertTranslation(ctx, id, domain.LangJa, "ja-"+id, "s", "b"))
+	require.NoError(t, repo.Publish(ctx, id, "seed@example.com", publishedAt))
+}
+
 func TestInsertArticle(t *testing.T) {
 	ctx := context.Background()
 	baseArticle := domain.Article{
@@ -261,6 +273,131 @@ func TestListPublished(t *testing.T) {
 					gotIDs = append(gotIDs, it.ArticleID)
 				}
 				// published_at の順序までは厳密に検証しない (両方 time.Now() で微差) が、集合として等しいことを検証
+				assert.ElementsMatch(t, tc.wantIDs, gotIDs)
+			})
+		}
+	})
+
+	t.Run("公開記事一覧の limit 打ち切りと並び順", func(t *testing.T) {
+		t1 := fixedNow
+		t2 := fixedNow.Add(1 * time.Hour)
+		t3 := fixedNow.Add(2 * time.Hour)
+
+		cases := []struct {
+			name    string
+			seed    func(t *testing.T, repo *postgres.NewsRepository)
+			limit   int
+			wantIDs []string
+		}{
+			{
+				name: "published_at が異なる公開記事 3 件で limit=2 のとき、published_at の新しい 2 件だけが返る",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", t1)
+					seedPublishedAt(t, ctx, repo, "TST-0002", t2)
+					seedPublishedAt(t, ctx, repo, "TST-0003", t3)
+				},
+				limit:   2,
+				wantIDs: []string{"TST-0003", "TST-0002"},
+			},
+			{
+				name: "published_at が異なる公開記事 3 件で limit=3 のとき、3 件全件が返る",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", t1)
+					seedPublishedAt(t, ctx, repo, "TST-0002", t2)
+					seedPublishedAt(t, ctx, repo, "TST-0003", t3)
+				},
+				limit:   3,
+				wantIDs: []string{"TST-0003", "TST-0002", "TST-0001"},
+			},
+			{
+				name: "published_at が異なる 2 件のとき、article_id の大小によらず published_at の新しい順に返る",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0009", t1)
+					seedPublishedAt(t, ctx, repo, "TST-0001", t2)
+				},
+				limit:   10,
+				wantIDs: []string{"TST-0001", "TST-0009"},
+			},
+			{
+				name: "published_at が同時刻の 2 件のとき、article_id の降順で返る",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", t1)
+					seedPublishedAt(t, ctx, repo, "TST-0002", t1)
+				},
+				limit:   10,
+				wantIDs: []string{"TST-0002", "TST-0001"},
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				sharedPG.Truncate(t)
+				repo := postgres.NewNewsRepository(sharedPG.Pool)
+				tc.seed(t, repo)
+
+				items, err := repo.ListPublished(ctx, domain.LangJa, tc.limit)
+				require.NoError(t, err)
+				gotIDs := make([]string, 0, len(items))
+				for _, it := range items {
+					gotIDs = append(gotIDs, it.ArticleID)
+				}
+				assert.Equal(t, tc.wantIDs, gotIDs)
+			})
+		}
+	})
+
+	t.Run("公開記事一覧の公開条件による除外", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			seed    func(t *testing.T, repo *postgres.NewsRepository)
+			wantIDs []string
+		}{
+			{
+				name: "承認直後 (published_at = reviewed_at) の記事は一覧に含まれる",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
+				},
+				wantIDs: []string{"TST-0001"},
+			},
+			{
+				name: "未校閲 (reviewed_at 未設定) の記事があるとき、一覧に含まれない",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
+					_ = seedWithJa(t, repo, "TST-0002", domain.StatusPending)
+				},
+				wantIDs: []string{"TST-0001"},
+			},
+			{
+				name: "校閲のみで公開時刻が無い (published_at 未設定) 記事があるとき、一覧に含まれない",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
+					_ = seedWithJa(t, repo, "TST-0002", domain.StatusRejected)
+				},
+				wantIDs: []string{"TST-0001"},
+			},
+			{
+				name: "承認後に却下された (published_at < reviewed_at) 記事があるとき、一覧に含まれない",
+				seed: func(t *testing.T, repo *postgres.NewsRepository) {
+					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
+					seedPublishedAt(t, ctx, repo, "TST-0002", fixedNow)
+					require.NoError(t, repo.Reject(ctx, "TST-0002", "seed@example.com", fixedNow.Add(1*time.Hour)))
+				},
+				wantIDs: []string{"TST-0001"},
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				sharedPG.Truncate(t)
+				repo := postgres.NewNewsRepository(sharedPG.Pool)
+				tc.seed(t, repo)
+
+				items, err := repo.ListPublished(ctx, domain.LangJa, 10)
+				require.NoError(t, err)
+				gotIDs := make([]string, 0, len(items))
+				for _, it := range items {
+					gotIDs = append(gotIDs, it.ArticleID)
+				}
 				assert.ElementsMatch(t, tc.wantIDs, gotIDs)
 			})
 		}

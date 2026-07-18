@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -106,7 +107,7 @@ func run() error {
 func setupLogger(env config.Env) error {
 	switch env {
 	case config.EnvProduction, config.EnvStaging:
-		slog.SetDefault(slog.New(newCloudLoggingHandler()).With("service", "news"))
+		slog.SetDefault(slog.New(newCloudLoggingHandler(os.Stdout)).With("service", "news"))
 	case config.EnvLocal:
 		h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
 		slog.SetDefault(slog.New(h).With("service", "news"))
@@ -117,8 +118,8 @@ func setupLogger(env config.Env) error {
 }
 
 // newCloudLoggingHandler は Cloud Logging が認識するフィールド名に slog の属性をリネームする。
-func newCloudLoggingHandler() slog.Handler {
-	return slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+func newCloudLoggingHandler(w io.Writer) slog.Handler {
+	return slog.NewJSONHandler(w, &slog.HandlerOptions{
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.LevelKey {
 				a.Key = "severity"

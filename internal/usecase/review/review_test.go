@@ -412,6 +412,33 @@ func TestList(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("レビュー用一覧の翻訳の記事別振り分け", func(t *testing.T) {
+		article1 := domain.Article{ArticleID: "TST-0001"}
+		article2 := domain.Article{ArticleID: "TST-0002"}
+		translations := []domain.Translation{
+			{ArticleID: "TST-0001", Lang: domain.LangJa, Title: "ja-0001"},
+			{ArticleID: "TST-0002", Lang: domain.LangJa, Title: "ja-0002"},
+			{ArticleID: "TST-0002", Lang: domain.LangEn, Title: "en-0002"},
+		}
+		repo := &port.MockNewsRepo{
+			ListArticlesFn: func(_ context.Context, _ int) ([]domain.Article, error) {
+				return []domain.Article{article1, article2}, nil
+			},
+			ListTranslationsByArticleIDsFn: func(_ context.Context, _ []string) ([]domain.Translation, error) {
+				return translations, nil
+			},
+		}
+
+		t.Run("2 記事に件数の異なる翻訳があるとき、各記事に自分の翻訳だけが結合されて返る", func(t *testing.T) {
+			got, err := newInteractor(repo).List(context.Background(), domain.Statuses, 50)
+			require.NoError(t, err)
+
+			require.Len(t, got, 2)
+			assert.Equal(t, []domain.Translation{translations[0]}, got[0].Translations)
+			assert.Equal(t, []domain.Translation{translations[1], translations[2]}, got[1].Translations)
+		})
+	})
 }
 
 func TestGet(t *testing.T) {
