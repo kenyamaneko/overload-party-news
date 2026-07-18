@@ -52,7 +52,7 @@ func TestClient_ListNews_StatusMapping(t *testing.T) {
 			})
 		}
 
-		t.Run("契約に無い 403 を受けたとき、unexpected status 403 のエラーになる", func(t *testing.T) {
+		t.Run("契約に無い 403 を受けたとき、想定外のステータスとしてエラーになる", func(t *testing.T) {
 			srv := apinewsserverfake.NewServer()
 			defer srv.Close()
 			srv.ListNewsFn = func(_ string, _ int) (int, any) { return http.StatusForbidden, nil }
