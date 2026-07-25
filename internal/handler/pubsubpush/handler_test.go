@@ -34,7 +34,7 @@ func pushBody(t *testing.T, rawData string) *strings.Reader {
 
 func TestHandle(t *testing.T) {
 	t.Run("push envelope の処理", func(t *testing.T) {
-		t.Run("有効な envelope で handle が nil を返すとき、200 を返し handle に復号済みの本文が渡る", func(t *testing.T) {
+		t.Run("有効な envelope で後続処理が成功したとき、200 を返し後続処理に復号済みの本文が渡る", func(t *testing.T) {
 			var gotData []byte
 			r := newTestRouter(func(_ context.Context, data []byte) error {
 				gotData = data
@@ -49,7 +49,7 @@ func TestHandle(t *testing.T) {
 			assert.Equal(t, `{"article_id":"TST-0001"}`, string(gotData))
 		})
 
-		t.Run("有効な envelope で handle がエラーを返すとき、500 を返しエラー内容が応答に含まれる", func(t *testing.T) {
+		t.Run("有効な envelope で後続処理がエラーを返すとき、500 を返しエラー内容が応答に含まれる", func(t *testing.T) {
 			r := newTestRouter(func(context.Context, []byte) error {
 				return errors.New("db connection lost")
 			})
@@ -62,7 +62,7 @@ func TestHandle(t *testing.T) {
 			assert.Contains(t, w.Body.String(), "db connection lost")
 		})
 
-		t.Run("本文が push envelope の JSON 形式でないとき、400 を返し handle を呼ばず応答に envelope 不正の内容が含まれる", func(t *testing.T) {
+		t.Run("本文が push envelope の JSON 形式でないとき、400 を返し後続処理を呼ばず応答に envelope 不正の内容が含まれる", func(t *testing.T) {
 			var called bool
 			r := newTestRouter(func(context.Context, []byte) error {
 				called = true
@@ -78,7 +78,7 @@ func TestHandle(t *testing.T) {
 			assert.Contains(t, w.Body.String(), "malformed envelope")
 		})
 
-		t.Run("message.data が base64 として不正なとき、400 を返し handle を呼ばず応答に復号不能の内容が含まれる", func(t *testing.T) {
+		t.Run("message.data が base64 として不正なとき、400 を返し後続処理を呼ばず応答に復号不能の内容が含まれる", func(t *testing.T) {
 			var called bool
 			r := newTestRouter(func(context.Context, []byte) error {
 				called = true

@@ -194,7 +194,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "壊れた JSON は DB に永続化されないべき")
 		})
 
-		t.Run("message.data が base64 として不正な push を投げると、400 を返し DB に永続化されない", func(t *testing.T) {
+		t.Run("message.data が base64 として不正な push を投げると、400 を返し応答に復号不能の内容が含まれ DB に永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
@@ -202,18 +202,20 @@ func TestPushIngestE2E(t *testing.T) {
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(body)))
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "undecodable data")
 			items, err := repo.ListArticles(context.Background(), 10)
 			require.NoError(t, err)
 			assert.Empty(t, items, "base64 復号不能な push は DB に永続化されないべき")
 		})
 
-		t.Run("push envelope の形式でない本文を投げると、400 を返し DB に永続化されない", func(t *testing.T) {
+		t.Run("push envelope の形式でない本文を投げると、400 を返し応答に envelope 不正の内容が含まれ DB に永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{not-json`)))
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
 			items, err := repo.ListArticles(context.Background(), 10)
 			require.NoError(t, err)
 			assert.Empty(t, items, "envelope 不正な push は DB に永続化されないべき")

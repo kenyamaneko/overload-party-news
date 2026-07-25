@@ -64,11 +64,11 @@ func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 		path string
 	}{
 		{
-			name: "一覧は auth header 欠落で 401",
+			name: "一覧は auth header 欠落で 401 を返し、応答に header 必須の内容が含まれる",
 			path: "/api/v1/news?lang=ja&limit=10",
 		},
 		{
-			name: "詳細は auth header 欠落で 401",
+			name: "詳細は auth header 欠落で 401 を返し、応答に header 必須の内容が含まれる",
 			path: "/api/v1/news/ART-TST-0001?lang=ja",
 		},
 	}
@@ -78,6 +78,7 @@ func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, tc.path, nil))
 			assert.Equal(t, http.StatusUnauthorized, w.Code)
+			assert.Contains(t, w.Body.String(), "header is required")
 		})
 	}
 }
@@ -93,6 +94,7 @@ func TestNewPublic_ApiRouteRejectsVerifierError(t *testing.T) {
 	req.Header.Set(internalauth.HeaderName, "any.token")
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid internal auth token")
 }
 
 // TestNewPublic_ApiRouteWithValidTokenReachesHandler は verifier を通過したリクエストが

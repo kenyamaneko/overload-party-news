@@ -24,7 +24,7 @@ type envelope struct {
 	} `json:"message"`
 }
 
-// Handler は Pub/Sub push subscription からの HTTP POST を既存の port.MessageHandler に橋渡しする。
+// Handler は Pub/Sub push subscription の受け口を担う HTTP delivery 層。
 type Handler struct {
 	handle port.MessageHandler
 }
@@ -34,7 +34,7 @@ func NewHandler(handle port.MessageHandler) *Handler {
 	return &Handler{handle: handle}
 }
 
-// Handle は Pub/Sub push subscription からの HTTP POST を受け、既存の port.MessageHandler に委譲する。
+// Handle は push envelope を解析・復号し、既存の port.MessageHandler へ委譲する。
 func (h *Handler) Handle(c *gin.Context) {
 	var env envelope
 	if err := c.ShouldBindJSON(&env); err != nil {
