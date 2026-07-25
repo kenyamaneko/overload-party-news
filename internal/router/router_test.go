@@ -64,11 +64,11 @@ func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 		path string
 	}{
 		{
-			name: "一覧は auth header 欠落で 401 を返し、応答に header 必須の内容が含まれる",
+			name: "一覧は認証ヘッダ欠落で 401 を返し、応答に認証ヘッダ必須の内容が含まれる",
 			path: "/api/v1/news?lang=ja&limit=10",
 		},
 		{
-			name: "詳細は auth header 欠落で 401 を返し、応答に header 必須の内容が含まれる",
+			name: "詳細は認証ヘッダ欠落で 401 を返し、応答に認証ヘッダ必須の内容が含まれる",
 			path: "/api/v1/news/ART-TST-0001?lang=ja",
 		},
 	}
