@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +13,9 @@ import (
 
 // errMalformedEnvelope は HTTP body が Pub/Sub push envelope の形を満たさないことを示す。
 var errMalformedEnvelope = errors.New("pubsubpush: malformed envelope")
+
+// errUndecodableData は envelope の message.data が base64 として復号できないことを示す。
+var errUndecodableData = errors.New("pubsubpush: undecodable data")
 
 // envelope は Cloud Pub/Sub push subscription が送る HTTP body の形。
 type envelope struct {
@@ -32,11 +34,7 @@ func NewHandler(handle port.MessageHandler) *Handler {
 	return &Handler{handle: handle}
 }
 
-// Handle は push envelope を decode して handle に委譲する。
-//   - envelope 自体が push envelope の形を満たさない: 400
-//   - message.data が base64 として復号できない: 200 (ack) + warn ログ
-//   - handle が nil を返す: 200 (ack)
-//   - handle がエラーを返す: 500 (Pub/Sub 側が再配送する)
+// Handle は Pub/Sub push subscription からの HTTP POST を受け、既存の port.MessageHandler に委譲する。
 func (h *Handler) Handle(c *gin.Context) {
 	var env envelope
 	if err := c.ShouldBindJSON(&env); err != nil {
@@ -47,8 +45,8 @@ func (h *Handler) Handle(c *gin.Context) {
 
 	data, err := base64.StdEncoding.DecodeString(env.Message.Data)
 	if err != nil {
-		slog.WarnContext(c.Request.Context(), "pubsubpush: undecodable data, acking", "error", err)
-		c.Status(http.StatusOK)
+		respondErr := fmt.Errorf("%w: %s", errUndecodableData, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": respondErr.Error()})
 		return
 	}
 

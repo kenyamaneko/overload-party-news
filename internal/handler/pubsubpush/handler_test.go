@@ -78,7 +78,7 @@ func TestHandle(t *testing.T) {
 			assert.Contains(t, w.Body.String(), "malformed envelope")
 		})
 
-		t.Run("message.data が base64 として不正なとき、200 を返し handle を呼ばない", func(t *testing.T) {
+		t.Run("message.data が base64 として不正なとき、400 を返し handle を呼ばず応答に復号不能の内容が含まれる", func(t *testing.T) {
 			var called bool
 			r := newTestRouter(func(context.Context, []byte) error {
 				called = true
@@ -89,8 +89,9 @@ func TestHandle(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/push", strings.NewReader(`{"message":{"data":"not-valid-base64!!"}}`))
 			r.ServeHTTP(w, req)
 
-			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.False(t, called)
+			assert.Contains(t, w.Body.String(), "undecodable data")
 		})
 	})
 }

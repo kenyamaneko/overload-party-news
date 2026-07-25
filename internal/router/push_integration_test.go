@@ -194,14 +194,14 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "壊れた JSON は DB に永続化されないべき")
 		})
 
-		t.Run("message.data が base64 として不正な push を投げると、200 を返し DB に永続化されない", func(t *testing.T) {
+		t.Run("message.data が base64 として不正な push を投げると、400 を返し DB に永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
 			body := `{"message":{"data":"not-valid-base64!!"}}`
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(body)))
 
-			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
 			items, err := repo.ListArticles(context.Background(), 10)
 			require.NoError(t, err)
 			assert.Empty(t, items, "base64 復号不能な push は DB に永続化されないべき")
