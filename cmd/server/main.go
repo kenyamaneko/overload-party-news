@@ -14,12 +14,11 @@ import (
 	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/kenyamaneko/overload-party-news/internal/adapter/pubsub"
 	"github.com/kenyamaneko/overload-party-news/internal/config"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
+	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
-	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-news/internal/router"
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/ingest"
@@ -64,16 +63,7 @@ func run() error {
 		return fmt.Errorf("build admin handler: %w", err)
 	}
 	subscriberH := subscriber.NewArticleCollectedHandler(ingestUC)
-
-	stream, err := pubsub.NewStream(ctx, cfg.GoogleCloudProject, cfg.NewsArticleCollectedSubscription)
-	if err != nil {
-		return fmt.Errorf("build stream: %w", err)
-	}
-	defer func() {
-		if cerr := stream.Close(); cerr != nil {
-			slog.Error("stream close failed", "error", cerr)
-		}
-	}()
+	articleCollectedPushH := pubsubpush.NewHandler(subscriberH.Handle)
 
 	authVerifier := internalauth.NewVerifier(
 		internalauth.StaticHS256Resolver([]byte(cfg.InternalAuthSecret), internalauth.DefaultKeyID),
@@ -81,7 +71,7 @@ func run() error {
 
 	publicSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.InternalPort),
-		Handler:           router.NewPublic(newsH, authVerifier),
+		Handler:           router.NewPublic(newsH, authVerifier, articleCollectedPushH),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	adminSrv := &http.Server{
@@ -94,11 +84,9 @@ func run() error {
 		"public_addr", publicSrv.Addr,
 		"admin_addr", adminSrv.Addr,
 		"env", cfg.Env,
-		"cloud_project", cfg.GoogleCloudProject,
-		"subscription", cfg.NewsArticleCollectedSubscription,
 	)
 
-	return runAll(ctx, publicSrv, adminSrv, stream, subscriberH.Handle)
+	return runAll(ctx, publicSrv, adminSrv)
 }
 
 // setupLogger は env に応じて slog のハンドラを設定する。
@@ -143,9 +131,8 @@ func newCloudLoggingHandler() slog.Handler {
 	})
 }
 
-// runAll は 2 つの HTTP server と Pub/Sub stream を並行起動し、
-// いずれかの失敗・シグナルで全員を停止させる。
-func runAll(ctx context.Context, publicSrv, adminSrv *http.Server, stream *pubsub.Stream, handle port.MessageHandler) error {
+// runAll は 2 つの HTTP server を並行起動し、いずれかの失敗・シグナルで全員を停止させる。
+func runAll(ctx context.Context, publicSrv, adminSrv *http.Server) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -159,9 +146,6 @@ func runAll(ctx context.Context, publicSrv, adminSrv *http.Server, stream *pubsu
 			return fmt.Errorf("admin http server: %w", err)
 		}
 		return nil
-	})
-	g.Go(func() error {
-		return stream.Consume(gCtx, handle)
 	})
 
 	g.Go(func() error {

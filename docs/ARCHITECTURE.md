@@ -80,11 +80,14 @@ newsfeed が同じ記事を再送してきた場合、校閲済みのテキス�
 
 ### ACK 戦略
 
-- INSERT 成功 / 既存ヒット → ACK
-- 必須フィールド欠落（§FEATURE_SPEC 3.1）→ ACK + warn ログ（再送されても結果が変わらない deterministic error）
-- DB 接続失敗 → NACK（Pub/Sub 側リトライ）
+push 受け口 (`/internal/v1/pubsub/news-article-collected`) は 2xx で ack、5xx で Pub/Sub 側が再配送する。
 
-「payload 不正 → ACK」は一見奇異だが、NACK して無限リトライさせるより dead-letter に送った方が運用負担が低い。Pub/Sub 側で DLQ 設定を入れる前提。
+- INSERT 成功 / 既存ヒット → 200
+- 必須フィールド欠落（§FEATURE_SPEC 3.1）→ 200 + warn ログ（再送されても結果が変わらない deterministic error）
+- push envelope の `message.data` が base64 として復号できない → 200 + warn ログ（同じく deterministic error）
+- DB 接続失敗 → 500（Pub/Sub 側リトライ）
+
+「payload 不正 → 200」は一見奇異だが、再配送を無限に繰り返させるより dead-letter に送った方が運用負担が低い。Pub/Sub 側で DLQ 設定を入れる前提。
 
 ## HTMX レンダリング層の構造
 
