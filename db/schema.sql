@@ -52,13 +52,11 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_news_articles_touch_updated_at ON news.news_articles;
 CREATE TRIGGER trg_news_articles_touch_updated_at
     BEFORE UPDATE ON news.news_articles
     FOR EACH ROW
     EXECUTE FUNCTION news.touch_updated_at();
 
-DROP TRIGGER IF EXISTS trg_news_article_translations_touch_updated_at ON news.news_article_translations;
 CREATE TRIGGER trg_news_article_translations_touch_updated_at
     BEFORE UPDATE ON news.news_article_translations
     FOR EACH ROW
