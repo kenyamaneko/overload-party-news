@@ -48,7 +48,6 @@ func pushEnvelopeBody(data string) *strings.Reader {
 	return strings.NewReader(`{"message":{"data":"` + encoded + `"}}`)
 }
 
-// TestNewPublic_HealthEndpoint は /health が auth middleware を通らず 200 を返すことを確かめる。
 func TestNewPublic_HealthEndpoint(t *testing.T) {
 	// VerifyFn 未設定: /health が verifier に到達しないことの検出を兼ねる
 	r := newTestPublicRouter(&internalauth.MockVerifier{}, noopPushHandle)
@@ -57,8 +56,6 @@ func TestNewPublic_HealthEndpoint(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// TestNewPublic_ApiRouteRequiresInternalAuth は /api/v1/news 配下が auth header 欠落で
-// 401 を返し handler に到達しないことを確かめる。
 func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 	// VerifyFn 未設定: header 欠落時は middleware が verifier に到達しないことの検出を兼ねる
 	r := newTestPublicRouter(&internalauth.MockVerifier{}, noopPushHandle)
@@ -87,8 +84,6 @@ func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 	}
 }
 
-// TestNewPublic_ApiRouteRejectsVerifierError は verifier が error を返すと 401 を返し
-// handler に到達しないことを確かめる。
 func TestNewPublic_ApiRouteRejectsVerifierError(t *testing.T) {
 	r := newTestPublicRouter(&internalauth.MockVerifier{
 		VerifyFn: func(string) (string, error) { return "", errors.New("invalid token") },
@@ -101,8 +96,6 @@ func TestNewPublic_ApiRouteRejectsVerifierError(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "invalid internal auth token")
 }
 
-// TestNewPublic_ApiRouteWithValidTokenReachesHandler は verifier を通過したリクエストが
-// handler の成功応答まで到達することを確かめる。
 func TestNewPublic_ApiRouteWithValidTokenReachesHandler(t *testing.T) {
 	r := newTestPublicRouter(&internalauth.MockVerifier{
 		VerifyFn: func(string) (string, error) { return "TST-PLAYER-1", nil },
@@ -114,39 +107,43 @@ func TestNewPublic_ApiRouteWithValidTokenReachesHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// TestNewPublic_PubsubPushRouteSkipsAuth は /internal/v1/pubsub/news-article-collected が
-// auth header 無しでも push handler まで到達することを確かめる。
 func TestNewPublic_PubsubPushRouteSkipsAuth(t *testing.T) {
-	var gotData []byte
-	// VerifyFn 未設定: verifier に到達しないことの検出を兼ねる
-	r := newTestPublicRouter(&internalauth.MockVerifier{}, func(_ context.Context, data []byte) error {
-		gotData = data
-		return nil
+	t.Run("pubsub push ルーティング", func(t *testing.T) {
+		t.Run("認証ヘッダが無いとき、push handler まで到達し復号済みの本文が渡る", func(t *testing.T) {
+			var gotData []byte
+			// VerifyFn 未設定: verifier に到達しないことの検出を兼ねる
+			r := newTestPublicRouter(&internalauth.MockVerifier{}, func(_ context.Context, data []byte) error {
+				gotData = data
+				return nil
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/internal/v1/pubsub/news-article-collected", pushEnvelopeBody(`{"article_id":"TST-0001"}`))
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, `{"article_id":"TST-0001"}`, string(gotData))
+		})
 	})
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/internal/v1/pubsub/news-article-collected", pushEnvelopeBody(`{"article_id":"TST-0001"}`))
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, `{"article_id":"TST-0001"}`, string(gotData))
 }
 
-// TestNewPublic_PubsubPushRouteRejectsUnknownEventPath は未登録のイベント名パスが
-// 404 を返し push handler に到達しないことを確かめる。
 func TestNewPublic_PubsubPushRouteRejectsUnknownEventPath(t *testing.T) {
-	var called bool
-	r := newTestPublicRouter(&internalauth.MockVerifier{}, func(context.Context, []byte) error {
-		called = true
-		return nil
+	t.Run("pubsub push ルーティング", func(t *testing.T) {
+		t.Run("未登録のイベント名パスのとき、404 を返し push handler を呼ばない", func(t *testing.T) {
+			var called bool
+			r := newTestPublicRouter(&internalauth.MockVerifier{}, func(context.Context, []byte) error {
+				called = true
+				return nil
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/internal/v1/pubsub/unknown-event", pushEnvelopeBody(`{}`))
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusNotFound, w.Code)
+			assert.False(t, called)
+		})
 	})
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/internal/v1/pubsub/unknown-event", pushEnvelopeBody(`{}`))
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.False(t, called)
 }
 
 func TestRequestLogger(t *testing.T) {
