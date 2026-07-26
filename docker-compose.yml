@@ -38,6 +38,7 @@ services:
       INTERNAL_PORT: "9008"
       ADMIN_PORT: "9108"
       DATABASE_CONN: host=postgres port=5432 dbname=news user=news password=news sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       INTERNAL_AUTH_SECRET: dev-secret-not-for-prod
     volumes:
       - ./:/src

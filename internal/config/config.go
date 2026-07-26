@@ -26,6 +26,12 @@ type Config struct {
 
 	DatabaseConn string
 
+	// DatabaseIAMAuthEnabled は Cloud SQL への接続を自動 IAM データベース認証で行うかを表す。
+	DatabaseIAMAuthEnabled bool
+
+	// CloudSQLConnectionName は Cloud SQL インスタンスの接続名 (project:region:instance)。
+	CloudSQLConnectionName string
+
 	// InternalAuthSecret は内部サービス間 JWT (HS256) 検証の共有秘密鍵。
 	InternalAuthSecret string
 }
@@ -53,17 +59,32 @@ func FromEnv() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	databaseIAMAuthEnabled, err := requireBool("DATABASE_IAM_AUTH_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	var cloudSQLConnectionName string
+	if databaseIAMAuthEnabled {
+		cloudSQLConnectionName, err = requireString("CLOUDSQL_CONNECTION_NAME")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	internalAuthSecret, err := requireString("INTERNAL_AUTH_SECRET")
 	if err != nil {
 		return nil, err
 	}
 
 	return &Config{
-		Env:                env,
-		InternalPort:       internalPort,
-		AdminPort:          adminPort,
-		DatabaseConn:       databaseConn,
-		InternalAuthSecret: internalAuthSecret,
+		Env:                    env,
+		InternalPort:           internalPort,
+		AdminPort:              adminPort,
+		DatabaseConn:           databaseConn,
+		DatabaseIAMAuthEnabled: databaseIAMAuthEnabled,
+		CloudSQLConnectionName: cloudSQLConnectionName,
+		InternalAuthSecret:     internalAuthSecret,
 	}, nil
 }
 
@@ -99,4 +120,16 @@ func requireInt(name string) (int, error) {
 		return 0, fmt.Errorf("%s: not an integer: %q", name, v)
 	}
 	return n, nil
+}
+
+// requireBool は必須の "true"/"false" env を取得する。未設定 / それ以外の値ならエラー。
+func requireBool(name string) (bool, error) {
+	switch v := os.Getenv(name); v {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be %q or %q, got %q", name, "true", "false", v)
+	}
 }
