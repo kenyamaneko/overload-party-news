@@ -26,9 +26,6 @@ type Config struct {
 
 	DatabaseConn string
 
-	GoogleCloudProject               string
-	NewsArticleCollectedSubscription string
-
 	// DatabaseIAMAuthEnabled は Cloud SQL への接続を自動 IAM データベース認証で行うかを表す。
 	DatabaseIAMAuthEnabled bool
 
@@ -62,14 +59,6 @@ func FromEnv() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cloudProject, err := requireString("GOOGLE_CLOUD_PROJECT")
-	if err != nil {
-		return nil, err
-	}
-	sub, err := requireString("NEWS_ARTICLE_COLLECTED_SUBSCRIPTION")
-	if err != nil {
-		return nil, err
-	}
 
 	databaseIAMAuthEnabled, err := requireBool("DATABASE_IAM_AUTH_ENABLED")
 	if err != nil {
@@ -89,15 +78,13 @@ func FromEnv() (*Config, error) {
 	}
 
 	return &Config{
-		Env:                              env,
-		InternalPort:                     internalPort,
-		AdminPort:                        adminPort,
-		DatabaseConn:                     databaseConn,
-		GoogleCloudProject:               cloudProject,
-		NewsArticleCollectedSubscription: sub,
-		DatabaseIAMAuthEnabled:           databaseIAMAuthEnabled,
-		CloudSQLConnectionName:           cloudSQLConnectionName,
-		InternalAuthSecret:               internalAuthSecret,
+		Env:                    env,
+		InternalPort:           internalPort,
+		AdminPort:              adminPort,
+		DatabaseConn:           databaseConn,
+		DatabaseIAMAuthEnabled: databaseIAMAuthEnabled,
+		CloudSQLConnectionName: cloudSQLConnectionName,
+		InternalAuthSecret:     internalAuthSecret,
 	}, nil
 }
 

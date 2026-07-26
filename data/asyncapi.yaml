@@ -6,7 +6,7 @@ info:
     News service が購読する Pub/Sub イベントの契約。
     本ファイルが SSoT。`packages/api-news` の event 型は asyncapi-codegen が本ファイルから生成する。
     Topic 名 (物理 channel) は overload-party-infra (Terraform) が SSoT であり、本仕様には書かない。
-    アプリは ConfigMap 由来の env var (NEWS_ARTICLE_COLLECTED_SUBSCRIPTION) で物理 subscription を解決する。
+    news は Cloud Run 上で Pub/Sub push subscription を HTTP (/internal/v1/pubsub/news-article-collected) で受ける。
 
 channels:
   ArticleCollected:
@@ -14,7 +14,7 @@ channels:
     description: |
       newsfeed が RSS 取得・要約生成を完了した記事を 1 件ずつ通知する論理チャネル。
       物理 topic 名は publisher (newsfeed) と subscriber (news) で同名運用。
-      news は env NEWS_ARTICLE_COLLECTED_SUBSCRIPTION で物理 subscription を解決する。
+      news は push subscription の HTTP 受け口 (/internal/v1/pubsub/news-article-collected) で受信する。
     messages:
       ArticleCollectedEvent:
         $ref: "#/components/messages/ArticleCollectedEvent"
