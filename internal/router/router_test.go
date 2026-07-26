@@ -1,9 +1,12 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
@@ -143,4 +147,43 @@ func TestNewPublic_PubsubPushRouteRejectsUnknownEventPath(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.False(t, called)
+}
+
+func TestRequestLogger(t *testing.T) {
+	t.Run("リクエストログのレベル分類", func(t *testing.T) {
+		cases := []struct {
+			name      string
+			status    int
+			wantLevel string
+		}{
+			{name: "status 200 のとき、INFO レベルで記録される", status: http.StatusOK, wantLevel: "INFO"},
+			{name: "status 399 のとき、INFO レベルで記録される", status: 399, wantLevel: "INFO"},
+			{name: "status 400 のとき、WARN レベルで記録される", status: http.StatusBadRequest, wantLevel: "WARN"},
+			{name: "status 499 のとき、WARN レベルで記録される", status: 499, wantLevel: "WARN"},
+			{name: "status 500 のとき、ERROR レベルで記録される", status: http.StatusInternalServerError, wantLevel: "ERROR"},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				original := slog.Default()
+				slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+				t.Cleanup(func() { slog.SetDefault(original) })
+
+				r := gin.New()
+				r.Use(newRequestLogger())
+				r.GET("/probe", func(c *gin.Context) { c.Status(tc.status) })
+
+				w := httptest.NewRecorder()
+				r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/probe", nil))
+
+				var record map[string]any
+				require.NoError(t, json.Unmarshal(buf.Bytes(), &record))
+				assert.Equal(t, tc.wantLevel, record["level"])
+				assert.Equal(t, http.MethodGet, record["method"])
+				assert.Equal(t, "/probe", record["path"])
+				assert.Equal(t, float64(tc.status), record["status"])
+			})
+		}
+	})
 }
