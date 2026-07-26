@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,9 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
+
+// errListArticlesFailed は記事一覧取得の失敗を模すためにテストが注入するセンチネル。
+var errListArticlesFailed = errors.New("list articles failed")
 
 func newAdminServer(t *testing.T, repo *port.MockNewsRepo) *gin.Engine {
 	t.Helper()
@@ -114,6 +118,7 @@ func TestList(t *testing.T) {
 			name        string
 			query       string
 			stubItems   []domain.ArticleWithTranslations
+			listErr     error
 			wantStatus  int
 			wantBodyHas []string
 			wantPubBtn  bool
@@ -210,12 +215,38 @@ func TestList(t *testing.T) {
 				wantPubBtn: true,
 				wantRejBtn: false,
 			},
+			{
+				name:  "ja と en の翻訳がある記事のとき、一覧の言語欄に ja, en と表示される",
+				query: "?limit=50",
+				stubItems: []domain.ArticleWithTranslations{{
+					Article: sampleArticle("01", domain.StatusPending),
+					Translations: []domain.Translation{
+						{Lang: domain.LangJa, Title: "ja-title"},
+						{Lang: domain.LangEn, Title: "en-title"},
+					},
+				}},
+				wantStatus:  http.StatusOK,
+				wantBodyHas: []string{"<small>ja, en</small>"},
+				wantPubBtn:  true,
+				wantRejBtn:  true,
+			},
+			{
+				name:       "記事一覧の取得が予期しないエラーになるとき、500 になる",
+				query:      "?limit=50",
+				listErr:    errListArticlesFailed,
+				wantStatus: http.StatusInternalServerError,
+			},
 		}
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				repo := &port.MockNewsRepo{}
 				stubList(repo, tc.stubItems)
+				baseListArticles := repo.ListArticlesFn
+				repo.ListArticlesFn = func(ctx context.Context, limit int) ([]domain.Article, error) {
+					articles, _ := baseListArticles(ctx, limit)
+					return articles, tc.listErr
+				}
 				req := httptest.NewRequest(http.MethodGet, "/admin/articles"+tc.query, nil)
 				w := httptest.NewRecorder()
 				newAdminServer(t, repo).ServeHTTP(w, req)
@@ -227,6 +258,90 @@ func TestList(t *testing.T) {
 				}
 				assert.Equal(t, tc.wantPubBtn, strings.Contains(body, `/publish"`), "承認ボタンの存在")
 				assert.Equal(t, tc.wantRejBtn, strings.Contains(body, `/reject"`), "却下ボタンの存在")
+			})
+		}
+	})
+
+	t.Run("status フィルタの絞り込みとタブ選択表示", func(t *testing.T) {
+		stubItems := []domain.ArticleWithTranslations{
+			sampleArticleWithJa("01", domain.StatusPending),
+			sampleArticleWithJa("02", domain.StatusPublished),
+			sampleArticleWithJa("03", domain.StatusRejected),
+		}
+
+		filterCases := []struct {
+			name           string
+			query          string
+			wantBodyHas    []string
+			wantBodyNotHas []string
+			wantRowCount   int
+		}{
+			{
+				name:           "pending/published/rejected が混在するとき、status=pending では pending 記事の行だけが表示される",
+				query:          "?status=pending&limit=50",
+				wantBodyHas:    []string{"ja-title-01"},
+				wantBodyNotHas: []string{"ja-title-02", "ja-title-03"},
+				wantRowCount:   1,
+			},
+			{
+				name:           "status=pending&status=published のとき、両 status の記事の行が表示される",
+				query:          "?status=pending&status=published&limit=50",
+				wantBodyHas:    []string{"ja-title-01", "ja-title-02"},
+				wantBodyNotHas: []string{"ja-title-03"},
+				wantRowCount:   2,
+			},
+		}
+
+		for _, tc := range filterCases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{}
+				stubList(repo, stubItems)
+				req := httptest.NewRequest(http.MethodGet, "/admin/articles"+tc.query, nil)
+				w := httptest.NewRecorder()
+				newAdminServer(t, repo).ServeHTTP(w, req)
+
+				body := w.Body.String()
+				for _, s := range tc.wantBodyHas {
+					assert.Contains(t, body, s)
+				}
+				for _, s := range tc.wantBodyNotHas {
+					assert.NotContains(t, body, s)
+				}
+				assert.Equal(t, tc.wantRowCount, strings.Count(body, `id="row-`))
+			})
+		}
+
+		tabCases := []struct {
+			name        string
+			query       string
+			wantBodyHas string
+		}{
+			{
+				name:        "status=pending のとき、pending タブが選択中として表示される",
+				query:       "?status=pending&limit=50",
+				wantBodyHas: `href="/admin/articles?status=pending" aria-current="page"`,
+			},
+			{
+				name:        "status 未指定のとき、all タブが選択中として表示される",
+				query:       "?limit=50",
+				wantBodyHas: `href="/admin/articles" aria-current="page"`,
+			},
+			{
+				name:        "同じ status を重複指定したとき、重複が除かれ pending タブが選択中として表示される",
+				query:       "?status=pending&status=pending&limit=50",
+				wantBodyHas: `href="/admin/articles?status=pending" aria-current="page"`,
+			},
+		}
+
+		for _, tc := range tabCases {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := &port.MockNewsRepo{}
+				stubList(repo, stubItems)
+				req := httptest.NewRequest(http.MethodGet, "/admin/articles"+tc.query, nil)
+				w := httptest.NewRecorder()
+				newAdminServer(t, repo).ServeHTTP(w, req)
+
+				assert.Contains(t, w.Body.String(), tc.wantBodyHas)
 			})
 		}
 	})
@@ -270,6 +385,21 @@ func TestGetEdit(t *testing.T) {
 					`hx-post="/admin/articles/01/translations/en"`,
 					"未作成", // en タブのプレースホルダ
 				},
+			},
+			{
+				name:        "ja 翻訳がある記事のとき、ページタイトルに ja タイトルが表示される",
+				repoReturn:  &existing,
+				wantStatus:  http.StatusOK,
+				wantBodyHas: []string{"<title>News Admin — ja-title-01</title>"},
+			},
+			{
+				name: "ja 翻訳が無い記事 (en のみ) のとき、ページタイトルに記事 ID が表示される",
+				repoReturn: &domain.ArticleWithTranslations{
+					Article:      sampleArticle("01", domain.StatusPending),
+					Translations: []domain.Translation{{Lang: domain.LangEn, Title: "en-title"}},
+				},
+				wantStatus:  http.StatusOK,
+				wantBodyHas: []string{"<title>News Admin — 01</title>"},
 			},
 		}
 

@@ -51,6 +51,18 @@ func TestClient_ListNews_StatusMapping(t *testing.T) {
 				assertSentinel(t, err, tc.wantTarget)
 			})
 		}
+
+		t.Run("契約に無い 403 を受けたとき、想定外のステータスとしてエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.ListNewsFn = func(_ string, _ int) (int, any) { return http.StatusForbidden, nil }
+
+			c := newTestClient(t, srv.URL())
+			_, err := c.ListNews(context.Background(), "", 0)
+
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "unexpected status 403")
+		})
 	})
 }
 
