@@ -15,20 +15,16 @@ var envKeys = []string{
 	"INTERNAL_PORT",
 	"ADMIN_PORT",
 	"DATABASE_CONN",
-	"GOOGLE_CLOUD_PROJECT",
-	"NEWS_ARTICLE_COLLECTED_SUBSCRIPTION",
 	"INTERNAL_AUTH_SECRET",
 }
 
 func validEnv() map[string]string {
 	return map[string]string{
-		"ENV":                                 "local",
-		"INTERNAL_PORT":                       "9008",
-		"ADMIN_PORT":                          "9108",
-		"DATABASE_CONN":                       "host=localhost dbname=news",
-		"GOOGLE_CLOUD_PROJECT":                "news-local",
-		"NEWS_ARTICLE_COLLECTED_SUBSCRIPTION": "news-article-collected-news-sub",
-		"INTERNAL_AUTH_SECRET":                "test-internal-auth-secret-do-not-use-in-prod",
+		"ENV":                  "local",
+		"INTERNAL_PORT":        "9008",
+		"ADMIN_PORT":           "9108",
+		"DATABASE_CONN":        "host=localhost dbname=news",
+		"INTERNAL_AUTH_SECRET": "test-internal-auth-secret-do-not-use-in-prod",
 	}
 }
 
@@ -101,14 +97,6 @@ func TestFromEnv(t *testing.T) {
 				mutate: func(m map[string]string) { delete(m, "DATABASE_CONN") },
 			},
 			{
-				name:   "GOOGLE_CLOUD_PROJECT が欠けるとき、エラーになる",
-				mutate: func(m map[string]string) { delete(m, "GOOGLE_CLOUD_PROJECT") },
-			},
-			{
-				name:   "NEWS_ARTICLE_COLLECTED_SUBSCRIPTION が欠けるとき、エラーになる",
-				mutate: func(m map[string]string) { delete(m, "NEWS_ARTICLE_COLLECTED_SUBSCRIPTION") },
-			},
-			{
 				name:   "INTERNAL_AUTH_SECRET が欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "INTERNAL_AUTH_SECRET") },
 			},
@@ -128,13 +116,11 @@ func TestFromEnv(t *testing.T) {
 
 		t.Run("全 env が Config の各フィールドに反映される", func(t *testing.T) {
 			m := map[string]string{
-				"ENV":                                 "production",
-				"INTERNAL_PORT":                       "12345",
-				"ADMIN_PORT":                          "12346",
-				"DATABASE_CONN":                       "host=db dbname=news user=n password=p sslmode=disable",
-				"GOOGLE_CLOUD_PROJECT":                "proj-42",
-				"NEWS_ARTICLE_COLLECTED_SUBSCRIPTION": "sub-name",
-				"INTERNAL_AUTH_SECRET":                "secret-xyz",
+				"ENV":                  "production",
+				"INTERNAL_PORT":        "12345",
+				"ADMIN_PORT":           "12346",
+				"DATABASE_CONN":        "host=db dbname=news user=n password=p sslmode=disable",
+				"INTERNAL_AUTH_SECRET": "secret-xyz",
 			}
 			applyEnv(t, m)
 
@@ -145,8 +131,6 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, 12345, cfg.InternalPort)
 			assert.Equal(t, 12346, cfg.AdminPort)
 			assert.Equal(t, m["DATABASE_CONN"], cfg.DatabaseConn)
-			assert.Equal(t, m["GOOGLE_CLOUD_PROJECT"], cfg.GoogleCloudProject)
-			assert.Equal(t, m["NEWS_ARTICLE_COLLECTED_SUBSCRIPTION"], cfg.NewsArticleCollectedSubscription)
 			assert.Equal(t, m["INTERNAL_AUTH_SECRET"], cfg.InternalAuthSecret)
 		})
 	})

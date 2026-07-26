@@ -8,13 +8,15 @@ import (
 	"github.com/gin-gonic/gin"
 	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 
+	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 )
 
-// NewPublic は gateway 経由の公開 REST API ルータを構築する。
-// /api/v1/news/* は X-Internal-Auth (HMAC JWT) を必須とし、
+// NewPublic は Cloud Run が公開する internal 向けルータを構築する。
+// /api/v1/news/* は gateway 経由の配信 API で、X-Internal-Auth (HMAC JWT) を必須とし
 // middleware が sub クレームを context に注入する。
-func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier) *gin.Engine {
+// /internal/v1/pubsub/* は Pub/Sub push subscription の受け口。
+func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier, articleCollectedPushH *pubsubpush.Handler) *gin.Engine {
 	r := gin.New()
 	r.Use(newRequestLogger(), gin.Recovery())
 
@@ -24,6 +26,11 @@ func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier) *gin
 	{
 		api.GET("", newsH.List)
 		api.GET("/:articleId", newsH.GetDetail)
+	}
+
+	internalGroup := r.Group("/internal/v1")
+	{
+		internalGroup.POST("/pubsub/news-article-collected", articleCollectedPushH.Handle)
 	}
 	return r
 }

@@ -26,9 +26,6 @@ type Config struct {
 
 	DatabaseConn string
 
-	GoogleCloudProject               string
-	NewsArticleCollectedSubscription string
-
 	// InternalAuthSecret は内部サービス間 JWT (HS256) 検証の共有秘密鍵。
 	InternalAuthSecret string
 }
@@ -56,27 +53,17 @@ func FromEnv() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cloudProject, err := requireString("GOOGLE_CLOUD_PROJECT")
-	if err != nil {
-		return nil, err
-	}
-	sub, err := requireString("NEWS_ARTICLE_COLLECTED_SUBSCRIPTION")
-	if err != nil {
-		return nil, err
-	}
 	internalAuthSecret, err := requireString("INTERNAL_AUTH_SECRET")
 	if err != nil {
 		return nil, err
 	}
 
 	return &Config{
-		Env:                              env,
-		InternalPort:                     internalPort,
-		AdminPort:                        adminPort,
-		DatabaseConn:                     databaseConn,
-		GoogleCloudProject:               cloudProject,
-		NewsArticleCollectedSubscription: sub,
-		InternalAuthSecret:               internalAuthSecret,
+		Env:                env,
+		InternalPort:       internalPort,
+		AdminPort:          adminPort,
+		DatabaseConn:       databaseConn,
+		InternalAuthSecret: internalAuthSecret,
 	}, nil
 }
 

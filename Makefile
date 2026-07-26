@@ -8,7 +8,7 @@ build: ## Build Docker image
 test: ## Run unit tests (Testcontainers; requires Docker running)
 	go test ./... -count=1 -race
 
-test-integration: ## Run unit + integration tests (Pub/Sub emulator container; slower)
+test-integration: ## Run unit + integration tests (slower)
 	go test -tags=integration ./... -count=1 -race
 
 vet: ## Run go vet
