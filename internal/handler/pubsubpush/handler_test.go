@@ -78,6 +78,38 @@ func TestHandle(t *testing.T) {
 			assert.Contains(t, w.Body.String(), "malformed envelope")
 		})
 
+		t.Run("message フィールドが無いとき、400 を返し後続処理を呼ばず応答に envelope 不正の内容が含まれる", func(t *testing.T) {
+			var called bool
+			r := newTestRouter(func(context.Context, []byte) error {
+				called = true
+				return nil
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/push", strings.NewReader(`{}`))
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.False(t, called)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+		})
+
+		t.Run("message.data が空文字のとき、400 を返し後続処理を呼ばず応答に envelope 不正の内容が含まれる", func(t *testing.T) {
+			var called bool
+			r := newTestRouter(func(context.Context, []byte) error {
+				called = true
+				return nil
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/push", strings.NewReader(`{"message":{"data":""}}`))
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.False(t, called)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+		})
+
 		t.Run("message.data が base64 として不正なとき、400 を返し後続処理を呼ばず応答に復号不能の内容が含まれる", func(t *testing.T) {
 			var called bool
 			r := newTestRouter(func(context.Context, []byte) error {

@@ -42,6 +42,11 @@ func (h *Handler) Handle(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": respondErr.Error()})
 		return
 	}
+	if env.Message.Data == "" {
+		respondErr := fmt.Errorf("%w: message.data is empty", errMalformedEnvelope)
+		c.JSON(http.StatusBadRequest, gin.H{"error": respondErr.Error()})
+		return
+	}
 
 	data, err := base64.StdEncoding.DecodeString(env.Message.Data)
 	if err != nil {

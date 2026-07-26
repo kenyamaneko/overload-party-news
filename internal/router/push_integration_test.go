@@ -221,6 +221,32 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "envelope 不正な push は DB に永続化されないべき")
 		})
 
+		t.Run("message フィールドが無い push を投げると、400 を返し応答に envelope 不正の内容が含まれ DB に永続化されない", func(t *testing.T) {
+			r, repo := newTestRouter(t)
+
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{}`)))
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+			items, err := repo.ListArticles(context.Background(), 10)
+			require.NoError(t, err)
+			assert.Empty(t, items, "message フィールドが無い push は DB に永続化されないべき")
+		})
+
+		t.Run("message.data が空文字の push を投げると、400 を返し応答に envelope 不正の内容が含まれ DB に永続化されない", func(t *testing.T) {
+			r, repo := newTestRouter(t)
+
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{"message":{"data":""}}`)))
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+			items, err := repo.ListArticles(context.Background(), 10)
+			require.NoError(t, err)
+			assert.Empty(t, items, "message.data が空文字の push は DB に永続化されないべき")
+		})
+
 		t.Run("envelope 不正な push で 400 になった後、同じ記事の有効な push を投げ直すと 200 を返し記事が永続化される", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA4"
