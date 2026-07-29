@@ -62,7 +62,7 @@ func fetchArticleWithTranslations(t *testing.T, repo *postgres.NewsRepository, i
 }
 
 // seedWithJa は ja 翻訳を持つ記事を 1 件 INSERT して status を指定値まで遷移させる。
-// 呼び出しのたびに time.Now() を使うため、連続呼び出しで published_at / reviewed_at に差がつく。
+// 呼び出しのたびに time.Now() を使うため、連続呼び出しで published_at / reviewed_at / ingested_at (DB 側 DEFAULT now()) に差がつく。
 func seedWithJa(t *testing.T, repo *postgres.NewsRepository, id string, status domain.Status) domain.Article {
 	t.Helper()
 	ctx := context.Background()
@@ -491,16 +491,21 @@ func TestListArticles(t *testing.T) {
 		cases := []struct {
 			name    string
 			limit   int
-			wantLen int
+			wantIDs []string
 		}{
-			{name: "limit=100 のとき、全 4 件を返す", limit: 100, wantLen: 4},
-			{name: "limit=2 のとき、2 件に絞られる", limit: 2, wantLen: 2},
+			{name: "limit=100 のとき、ingested_at 降順で全 4 件を返す", limit: 100, wantIDs: []string{"rej", "pub", "p2", "p1"}},
+			{name: "limit=2 のとき、ingested_at が新しい 2 件に絞られる", limit: 2, wantIDs: []string{"rej", "pub"}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				items, err := repo.ListArticles(ctx, tc.limit)
 				require.NoError(t, err)
-				assert.Len(t, items, tc.wantLen)
+
+				gotIDs := make([]string, len(items))
+				for i, item := range items {
+					gotIDs[i] = item.ArticleID
+				}
+				assert.Equal(t, tc.wantIDs, gotIDs)
 			})
 		}
 	})

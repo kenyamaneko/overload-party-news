@@ -548,13 +548,14 @@ func TestPublish(t *testing.T) {
 		successAW := sampleArticleWithJa(articleID, domain.StatusPublished)
 
 		cases := []struct {
-			name        string
-			path        string
-			hxTarget    string
-			repoErr     error
-			wantStatus  int
-			wantHXRedir string
-			wantBodyHas string
+			name          string
+			path          string
+			hxTarget      string
+			repoErr       error
+			wantStatus    int
+			wantHXRedir   string
+			wantBodyHas   string
+			wantBodyEmpty bool
 		}{
 			{
 				name:        "HX-Target が row-{id} のとき、200 + 行フラグメントを返す",
@@ -564,17 +565,19 @@ func TestPublish(t *testing.T) {
 				wantBodyHas: `id="row-` + articleID + `"`,
 			},
 			{
-				name:        "HX-Target が row 以外のとき、HX-Redirect でリストへ誘導する",
-				path:        "/admin/articles/" + articleID + "/publish",
-				hxTarget:    "body",
-				wantStatus:  http.StatusOK,
-				wantHXRedir: "/admin/articles",
+				name:          "HX-Target が row 以外のとき、HX-Redirect でリストへ誘導し本文は返さない",
+				path:          "/admin/articles/" + articleID + "/publish",
+				hxTarget:      "body",
+				wantStatus:    http.StatusOK,
+				wantHXRedir:   "/admin/articles",
+				wantBodyEmpty: true,
 			},
 			{
-				name:       "存在しない記事のとき、404 になる",
-				path:       "/admin/articles/ghost/publish",
-				repoErr:    fmt.Errorf("not found: %w", port.ErrNotFound),
-				wantStatus: http.StatusNotFound,
+				name:        "存在しない記事のとき、404 + エラーメッセージを返す",
+				path:        "/admin/articles/ghost/publish",
+				repoErr:     fmt.Errorf("not found: %w", port.ErrNotFound),
+				wantStatus:  http.StatusNotFound,
+				wantBodyHas: "article not found",
 			},
 		}
 
@@ -595,7 +598,7 @@ func TestPublish(t *testing.T) {
 
 				assert.Equal(t, tc.wantStatus, w.Code)
 				assert.Equal(t, tc.wantHXRedir, w.Header().Get("HX-Redirect"))
-				// wantBodyHas が空のケースは Contains が常に通過する。
+				assert.Equal(t, tc.wantBodyEmpty, w.Body.Len() == 0)
 				assert.Contains(t, w.Body.String(), tc.wantBodyHas)
 			})
 		}
