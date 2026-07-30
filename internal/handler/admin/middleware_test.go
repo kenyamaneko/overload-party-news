@@ -71,7 +71,7 @@ func TestAuthMiddleware(t *testing.T) {
 			}
 		})
 
-		t.Run("local 環境ではヘッダが無くても reviewer が注入される", func(t *testing.T) {
+		t.Run("local 環境ではヘッダが無くても固定の reviewer が注入される", func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			var seenReviewer string
 			r := gin.New()
@@ -86,7 +86,7 @@ func TestAuthMiddleware(t *testing.T) {
 			r.ServeHTTP(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
-			assert.NotEmpty(t, seenReviewer)
+			assert.Equal(t, "local-dev@example.com", seenReviewer)
 		})
 	})
 }

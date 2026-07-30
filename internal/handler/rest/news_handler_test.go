@@ -42,6 +42,7 @@ func TestList(t *testing.T) {
 			wantStatus   int
 			wantArticles []apinews.NewsListItem
 			wantLang     string
+			wantErrHas   string
 		}{
 			{
 				name:         "lang=ja + limit=10 で 0 件のとき、200 と空配列を返す",
@@ -60,39 +61,46 @@ func TestList(t *testing.T) {
 				wantLang:     "en",
 			},
 			{
-				name:       "lang 未指定のとき、400 になる",
+				name:       "lang 未指定のとき、400 + lang 必須のエラーメッセージを返す",
 				query:      "?limit=10",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "lang is required",
 			},
 			{
-				name:       "limit 未指定のとき、400 になる (デフォルト値へフォールバックしない)",
+				name:       "limit 未指定のとき、400 + limit 不正のエラーメッセージを返す (デフォルト値へフォールバックしない)",
 				query:      "?lang=ja",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "クエリ全未指定のとき、400 になる",
+				name:       "クエリ全未指定のとき、400 + limit 不正のエラーメッセージを返す",
 				query:      "",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "lang 対応外のとき、400 になる",
+				name:       "lang 対応外のとき、400 + lang 非対応のエラーメッセージを返す",
 				query:      "?lang=fr&limit=10",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "unsupported lang",
 			},
 			{
-				name:       "limit=0 のとき、400 になる",
+				name:       "limit=0 のとき、400 + limit 不正のエラーメッセージを返す",
 				query:      "?lang=ja&limit=0",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "limit=101 (上限超過) のとき、400 になる",
+				name:       "limit=101 (上限超過) のとき、400 + limit 不正のエラーメッセージを返す",
 				query:      "?lang=ja&limit=101",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "limit が非整数のとき、400 になる",
+				name:       "limit が非整数のとき、400 + limit 不正のエラーメッセージを返す",
 				query:      "?lang=ja&limit=abc",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "invalid limit",
 			},
 		}
 
@@ -118,6 +126,12 @@ func TestList(t *testing.T) {
 				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 				// wantArticles が空配列のケースは nil でないこと (0 件でも null を返さない仕様) も検証する。
 				assert.Equal(t, tc.wantArticles, resp.Articles)
+
+				var errBody struct {
+					Error string `json:"error"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errBody))
+				assert.Contains(t, errBody.Error, tc.wantErrHas)
 			})
 		}
 	})
@@ -148,6 +162,7 @@ func TestGetDetail(t *testing.T) {
 			wantStatus int
 			wantBody   apinews.NewsDetail
 			wantLang   string
+			wantErrHas string
 		}{
 			{
 				name:       "存在する記事のとき、body / source_url を含む JSON を返す",
@@ -158,28 +173,32 @@ func TestGetDetail(t *testing.T) {
 				wantLang:   "ja",
 			},
 			{
-				name:       "not found のとき、404 になる",
+				name:       "not found のとき、404 + 記事が見つからないエラーメッセージを返す",
 				query:      "?lang=ja",
 				repoErr:    port.ErrNotFound,
 				wantStatus: http.StatusNotFound,
 				wantLang:   "ja",
+				wantErrHas: "article not found",
 			},
 			{
-				name:       "その他エラーのとき、500 になる",
+				name:       "その他エラーのとき、500 + repo のエラーメッセージを返す",
 				query:      "?lang=ja",
 				repoErr:    otherErr,
 				wantStatus: http.StatusInternalServerError,
 				wantLang:   "ja",
+				wantErrHas: "db lost",
 			},
 			{
-				name:       "lang 未指定のとき、400 になる",
+				name:       "lang 未指定のとき、400 + lang 必須のエラーメッセージを返す",
 				query:      "",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "lang is required",
 			},
 			{
-				name:       "lang 対応外のとき、400 になる",
+				name:       "lang 対応外のとき、400 + lang 非対応のエラーメッセージを返す",
 				query:      "?lang=fr",
 				wantStatus: http.StatusBadRequest,
+				wantErrHas: "unsupported lang",
 			},
 		}
 
@@ -201,10 +220,15 @@ func TestGetDetail(t *testing.T) {
 				assert.Equal(t, tc.wantStatus, w.Code)
 				assert.Equal(t, tc.wantLang, gotLang)
 
-				// エラーケースは wantBody がゼロ値、レスポンスボディも NewsDetail として空に解釈される。
 				var got apinews.NewsDetail
 				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 				assert.Equal(t, tc.wantBody, got)
+
+				var errBody struct {
+					Error string `json:"error"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errBody))
+				assert.Contains(t, errBody.Error, tc.wantErrHas)
 			})
 		}
 	})
