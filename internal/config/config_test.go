@@ -9,6 +9,10 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/config"
 )
 
+// testPublicKeyPEM は config が値をそのまま保持することの確認にだけ使うダミー。
+// 鍵としての妥当性は検証しないため、PEM の体裁だけ揃えている。
+const testPublicKeyPEM = "-----BEGIN PUBLIC KEY-----\ndummy-not-a-real-key\n-----END PUBLIC KEY-----\n"
+
 // envKeys は Config が参照する全 env 変数。テスト間の残留を潰すために使う。
 var envKeys = []string{
 	"ENV",
@@ -17,7 +21,7 @@ var envKeys = []string{
 	"DATABASE_CONN",
 	"DATABASE_IAM_AUTH_ENABLED",
 	"CLOUDSQL_CONNECTION_NAME",
-	"INTERNAL_AUTH_SECRET",
+	"INTERNAL_AUTH_PUBLIC_KEY",
 }
 
 func validEnv() map[string]string {
@@ -27,7 +31,7 @@ func validEnv() map[string]string {
 		"ADMIN_PORT":                "9108",
 		"DATABASE_CONN":             "host=localhost dbname=news",
 		"DATABASE_IAM_AUTH_ENABLED": "false",
-		"INTERNAL_AUTH_SECRET":      "test-internal-auth-secret-do-not-use-in-prod",
+		"INTERNAL_AUTH_PUBLIC_KEY":  testPublicKeyPEM,
 	}
 }
 
@@ -122,8 +126,8 @@ func TestFromEnv(t *testing.T) {
 				},
 			},
 			{
-				name:   "INTERNAL_AUTH_SECRET が欠けるとき、エラーになる",
-				mutate: func(m map[string]string) { delete(m, "INTERNAL_AUTH_SECRET") },
+				name:   "INTERNAL_AUTH_PUBLIC_KEY が欠けるとき、エラーになる",
+				mutate: func(m map[string]string) { delete(m, "INTERNAL_AUTH_PUBLIC_KEY") },
 			},
 		}
 		for _, tc := range invalidCases {
@@ -147,7 +151,7 @@ func TestFromEnv(t *testing.T) {
 				"DATABASE_CONN":             "host=db dbname=news user=n password=p sslmode=disable",
 				"DATABASE_IAM_AUTH_ENABLED": "true",
 				"CLOUDSQL_CONNECTION_NAME":  "overload-party-dev:asia-northeast1:overload-party-db",
-				"INTERNAL_AUTH_SECRET":      "secret-xyz",
+				"INTERNAL_AUTH_PUBLIC_KEY":  testPublicKeyPEM,
 			}
 			applyEnv(t, m)
 
@@ -160,7 +164,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, m["DATABASE_CONN"], cfg.DatabaseConn)
 			assert.True(t, cfg.DatabaseIAMAuthEnabled)
 			assert.Equal(t, m["CLOUDSQL_CONNECTION_NAME"], cfg.CloudSQLConnectionName)
-			assert.Equal(t, m["INTERNAL_AUTH_SECRET"], cfg.InternalAuthSecret)
+			assert.Equal(t, m["INTERNAL_AUTH_PUBLIC_KEY"], cfg.InternalAuthPublicKey)
 		})
 
 		t.Run("DATABASE_IAM_AUTH_ENABLED が false のとき、CLOUDSQL_CONNECTION_NAME が未設定でも成功する", func(t *testing.T) {

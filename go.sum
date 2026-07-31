@@ -146,8 +146,8 @@ github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFr
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
 github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d/go.mod h1:2PavIy+JPciBPrBUjwbNvtwB6RQlve+hkpll6QSNmOE=
-github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.1.3 h1:UV09OVOxHhJy59WAsPVIDiYxEf2XiyrQ8sHzmkPjon4=
-github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.1.3/go.mod h1:vaJLbLIlD3ysKZmTMaLGSHXwLCNvvbe684QzX9O1200=
+github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.3.0 h1:u0MHCRMn1ZhZIxUne5sD00XZFqPfT9jFB4xYejQUtZc=
+github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.3.0/go.mod h1:vaJLbLIlD3ysKZmTMaLGSHXwLCNvvbe684QzX9O1200=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
 github.com/klauspost/compress v1.18.5/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/klauspost/cpuid/v2 v2.3.0 h1:S4CRMLnYUhGeDFDqkGriYKdfoFlDnMtqTiI/sFzhA9Y=

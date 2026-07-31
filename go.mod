@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/cloudsqlconn v1.23.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.1.3
+	github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go v0.3.0
 	github.com/kenyamaneko/overload-party-news/packages/api-news v0.0.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
