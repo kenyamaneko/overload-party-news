@@ -1,9 +1,11 @@
 name: CI
 
 # PR の品質ゲート。ブランチ保護の required status check として使う。
+# main への push では test-catalog.yaml から呼ばれ、テスト観点カタログの元になる。
 on:
   pull_request:
     branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
@@ -67,6 +69,13 @@ jobs:
         with:
           json-path: go-test-unit.json
           title: 単体テスト結果
+      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
+      - name: Upload unit test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-unit
+          path: go-test-unit.json
+          retention-days: 1
 
   test-integration:
     runs-on: ubicloud-standard-2
@@ -95,6 +104,13 @@ jobs:
         with:
           json-path: go-test-integration.json
           title: 結合テスト結果
+      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-integration
+          path: go-test-integration.json
+          retention-days: 1
 
   image-scan:
     runs-on: ubicloud-standard-2
