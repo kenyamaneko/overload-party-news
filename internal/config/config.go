@@ -32,8 +32,8 @@ type Config struct {
 	// CloudSQLConnectionName は Cloud SQL インスタンスの接続名 (project:region:instance)。
 	CloudSQLConnectionName string
 
-	// InternalAuthSecret は内部サービス間 JWT (HS256) 検証の共有秘密鍵。
-	InternalAuthSecret string
+	// InternalAuthPublicKey は内部サービス間 JWT (RS256) を検証する gateway の公開鍵。PEM 形式。
+	InternalAuthPublicKey string
 }
 
 // FromEnv は process env から Config を構築する。必須変数が未設定ならエラー。
@@ -72,7 +72,7 @@ func FromEnv() (*Config, error) {
 		}
 	}
 
-	internalAuthSecret, err := requireString("INTERNAL_AUTH_SECRET")
+	internalAuthPublicKey, err := requireString("INTERNAL_AUTH_PUBLIC_KEY")
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func FromEnv() (*Config, error) {
 		DatabaseConn:           databaseConn,
 		DatabaseIAMAuthEnabled: databaseIAMAuthEnabled,
 		CloudSQLConnectionName: cloudSQLConnectionName,
-		InternalAuthSecret:     internalAuthSecret,
+		InternalAuthPublicKey:  internalAuthPublicKey,
 	}, nil
 }
 

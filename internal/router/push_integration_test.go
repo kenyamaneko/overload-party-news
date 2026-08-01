@@ -4,6 +4,8 @@ package router_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"log"
@@ -70,7 +72,9 @@ func newTestRouter(t *testing.T) (*gin.Engine, *postgres.NewsRepository) {
 	newsH := rest.NewNewsHandler(news.New(repo))
 	subscriberH := subscriber.NewArticleCollectedHandler(ingest.New(repo))
 	pushH := pubsubpush.NewHandler(subscriberH.Handle)
-	verifier := internalauth.NewVerifier(internalauth.StaticHS256Resolver([]byte("test-internal-auth-secret"), internalauth.DefaultKeyID))
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	verifier := internalauth.NewVerifier(internalauth.StaticPublicKeyResolver(&signingKey.PublicKey, internalauth.DefaultKeyID))
 
 	return router.NewPublic(newsH, verifier, pushH), repo
 }
