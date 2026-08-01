@@ -1,171 +1,23 @@
 name: CI
 
-# PR の品質ゲート。ブランチ保護の required status check として使う。
-# main への push では test-catalog.yaml から呼ばれ、テスト観点カタログの元になる。
 on:
   pull_request:
     branches: [main]
   workflow_call:
+    outputs:
+      code-changed:
+        description: "'true' when the run touched code. The test results exist only then."
+        value: ${{ jobs.ci.outputs.code-changed }}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # main の run は GitHub Pages への deploy に繋がるため、後続の push で打ち切らない
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  lint:
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Configure Go private modules
-        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
-        with:
-          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
-          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
-      # golangci-lint-action のビルド済みバイナリは Go 1.25 未対応のため
-      # go install でソースからビルドして使う
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
-      - name: Run lint
-        run: golangci-lint run --timeout 5m ./...
-        env:
-          GOPRIVATE: github.com/kenyamaneko/*
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: Run govulncheck
-        run: govulncheck ./...
-        env:
-          GOPRIVATE: github.com/kenyamaneko/*
-
-  test-unit:
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Configure Go private modules
-        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
-        with:
-          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
-          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
-      # Testcontainers はテスト中に自動 pull するが、時間がかかりタイムアウトの原因になるため事前に取得する
-      - name: Pre-pull test images (Testcontainers)
-        run: docker pull postgres:16-alpine
-      - name: Run unit tests
-        run: go test -race -count=1 ./... -json | tee go-test-unit.json
-        env:
-          GOPRIVATE: github.com/kenyamaneko/*
-      - name: Report test results
-        if: ${{ !cancelled() }}
-        uses: kenyamaneko/overload-party-common/.github/actions/go-test-report@main
-        with:
-          json-path: go-test-unit.json
-          title: 単体テスト結果
-      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
-      - name: Upload unit test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-test-unit
-          path: go-test-unit.json
-          retention-days: 1
-
-  test-integration:
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Configure Go private modules
-        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
-        with:
-          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
-          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
-      - name: Pre-pull test images (Testcontainers)
-        run: docker pull postgres:16-alpine
-      - name: Run integration tests
-        run: go test -race -count=1 -tags=integration ./... -json | tee go-test-integration.json
-        env:
-          GOPRIVATE: github.com/kenyamaneko/*
-      - name: Report test results
-        if: ${{ !cancelled() }}
-        uses: kenyamaneko/overload-party-common/.github/actions/go-test-report@main
-        with:
-          json-path: go-test-integration.json
-          title: 結合テスト結果
-      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
-      - name: Upload integration test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-test-integration
-          path: go-test-integration.json
-          retention-days: 1
-
-  image-scan:
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Generate Cross-Repo Deps App token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
-          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
-          owner: kenyamaneko
-      - name: Build image
-        env:
-          DOCKER_BUILDKIT: "1"
-          GO_MODULES_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: docker build --secret id=GO_MODULES_TOKEN,env=GO_MODULES_TOKEN -t news:ci-scan .
-      - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          image-ref: news:ci-scan
-          exit-code: "1"
-          severity: "CRITICAL,HIGH"
-
-  codegen-sync:
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Configure private repo auth
-        # pip install で git+https://github.com/kenyamaneko/... を clone するために
-        # token-based 認証 (insteadOf) を git config に注入する。
-        uses: kenyamaneko/overload-party-common/.github/actions/setup-go-private-modules@main
-        with:
-          app-id: ${{ vars.CROSS_REPO_DEPS_APP_ID }}
-          private-key: ${{ secrets.CROSS_REPO_DEPS_APP_PRIVATE_KEY }}
-      - name: Install Python dependencies
-        run: |
-          pip install \
-            "overload-party-codegen-tools @ git+https://github.com/kenyamaneko/overload-party-common.git@main#subdirectory=packages/codegen-tools" \
-            "overload-party-asyncapi-codegen-tools @ git+https://github.com/kenyamaneko/overload-party-common.git@main#subdirectory=packages/asyncapi-codegen-tools"
-      - name: Install oapi-codegen
-        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
-      - name: Run codegen (OpenAPI + AsyncAPI)
-        run: scripts/generate_types.sh
-      - name: Check for drift
-        run: .github/scripts/ci/check-codegen-drift.sh
+  ci:
+    uses: kenyamaneko/overload-party-common/.github/workflows/go-service-ci.yaml@main
+    secrets: inherit
