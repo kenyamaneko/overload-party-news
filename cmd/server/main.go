@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,7 +17,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/kenyamaneko/overload-party-news/internal/config"
-	"github.com/kenyamaneko/overload-party-news/internal/handler/admin"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
@@ -23,7 +24,6 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/router"
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/ingest"
 	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
-	"github.com/kenyamaneko/overload-party-news/internal/usecase/review"
 )
 
 func main() {
@@ -55,14 +55,9 @@ func run() error {
 	repo := postgres.NewNewsRepository(pool)
 
 	newsUC := news.New(repo)
-	reviewUC := review.New(repo, repo, time.Now)
 	ingestUC := ingest.New(repo)
 
 	newsH := rest.NewNewsHandler(newsUC)
-	adminH, err := admin.NewHandler(reviewUC)
-	if err != nil {
-		return fmt.Errorf("build admin handler: %w", err)
-	}
 	subscriberH := subscriber.NewArticleCollectedHandler(ingestUC)
 	articleCollectedPushH := pubsubpush.NewHandler(subscriberH.Handle)
 
@@ -74,24 +69,23 @@ func run() error {
 		internalauth.StaticPublicKeyResolver(internalAuthKey, internalauth.DefaultKeyID),
 	)
 
+	// 校閲は当面運用者の手動作業に切り替えたため、管理 UI のサーバは起動しない。
 	publicSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.InternalPort),
 		Handler:           router.NewPublic(newsH, authVerifier, articleCollectedPushH),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	adminSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.AdminPort),
-		Handler:           router.NewAdmin(cfg.Env, adminH),
-		ReadHeaderTimeout: 10 * time.Second,
+
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.InternalPort))
+	if err != nil {
+		return fmt.Errorf("listen public port: %w", err)
 	}
 
 	slog.Info("listening",
-		"public_addr", publicSrv.Addr,
-		"admin_addr", adminSrv.Addr,
+		"public_addr", ln.Addr().String(),
 		"env", cfg.Env,
 	)
 
-	return runAll(ctx, publicSrv, adminSrv)
+	return serve(ctx, publicSrv, ln)
 }
 
 // setupLogger は env に応じて slog のハンドラを設定する。
@@ -136,19 +130,13 @@ func newCloudLoggingHandler(w io.Writer) slog.Handler {
 	})
 }
 
-// runAll は 2 つの HTTP server を並行起動し、いずれかの失敗・シグナルで全員を停止させる。
-func runAll(ctx context.Context, publicSrv, adminSrv *http.Server) error {
+// serve は ln で HTTP server を起動し、シグナルまたは ctx の終了で graceful shutdown する。
+func serve(ctx context.Context, srv *http.Server, ln net.Listener) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := publicSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("public http server: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() error {
-		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			return fmt.Errorf("admin http server: %w", err)
 		}
 		return nil
 	})
@@ -158,11 +146,8 @@ func runAll(ctx context.Context, publicSrv, adminSrv *http.Server) error {
 		slog.Info("shutdown requested")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := publicSrv.Shutdown(shutdownCtx); err != nil {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("public http shutdown: %w", err)
-		}
-		if err := adminSrv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("admin http shutdown: %w", err)
 		}
 		return nil
 	})

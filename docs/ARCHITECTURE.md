@@ -11,7 +11,7 @@ news は **記事コンテンツ**の single source of truth。`news.news_articl
 | ライフサイクル | 書き手 | 契機 |
 |---|---|---|
 | 記事の初期挿入 (`status = pending`) | news | `news-article-collected` イベント購読 |
-| 承認・却下・編集 | news | 管理 UI (§ 管理 UI) からの操作 |
+| 承認・却下・編集 | news | 校閲操作（管理 UI は提供していない。§ 管理 UI を提供していない理由） |
 | 読み取り（公開配信） | news → gateway | 公開 REST API |
 
 newsfeed（Cloud Run Job）は DB を触らない。収集結果を Pub/Sub 経由で news に引き渡すのみ。これにより:
@@ -20,27 +20,32 @@ newsfeed（Cloud Run Job）は DB を触らない。収集結果を Pub/Sub 経�
 - newsfeed 側の障害が news の DB 状態を壊さない
 - newsfeed の再実行（同一記事の再取得）は Pub/Sub 経由でしか到達しないため、news 側の冪等性制御 1 箇所で吸収できる
 
-## API と管理画面の分離
+## 公開しているポート
 
-news は同一バイナリ・同一 Pod で 2 つのポートを listen し、gateway 向け配信 API と運用者向け管理 UI を信頼境界で分ける。
+news が listen するのは gateway 向け配信 API の 1 ポートだけである。
 
-| ポート | プロトコル | 想定クライアント | 認証 | Kubernetes Service |
-|---|---|---|---|---|
-| `:9008` | HTTP JSON | gateway | ClusterIP（gateway 経由） | ClusterIP |
-| `:9108` | HTTP HTML + HTMX | 運用者 | IAP が `X-Goog-Authenticated-User-Email` を付与 | 外部 Ingress + IAP |
+| ポート | プロトコル | 想定クライアント | 認証 |
+|---|---|---|---|
+| `:9008` | HTTP JSON | gateway | 内部サービス間 JWT (RS256) |
 
-### 1 ポート + path 振り分けにしない理由
+## 管理 UI を提供していない理由
+
+管理 UI (HTML + HTMX) のサーバは起動しない。Cloud Run は 1 リビジョンにつき 1 ポートしか公開せず、管理 UI の認証を肩代わりしていた IAP も公開ロードバランサの廃止で無くなったため、到達させるには構成と認証を作り直す必要がある。校閲は当面運用者の手作業とし、管理機能は将来別サービスとして用意する。
+
+以降の管理 UI に関する記述は、その別サービスに引き継ぐ設計として残す。
+
+### 管理 UI を配信 API と同じポートに置かない
 
 - IAP は Ingress / LB 単位で設定するため、`/admin/*` だけに認証を強制することはできない
-- ポートごとに Service / Ingress を分けることで、`/admin/*` が誤って ClusterIP 側に露出する構造的リスクを排除する
-- 公開 API は gateway 経由のみ、管理 UI は IAP 経由のみ、という信頼境界を manifest レベルで固定できる
+- ポートを分けることで、`/admin/*` が誤って配信 API 側に露出する構造的リスクを排除する
+- 公開 API は gateway 経由のみ、管理 UI は認証済み経路のみ、という信頼境界をインフラ定義のレベルで固定できる
 
 ### IAP による認証の肩代わり
 
 管理 UI は認証を news コード内に持たない。
 
 ```
-ブラウザ → GCLB → IAP ─(認証成功時のみ)→ GKE Ingress → news :9108
+ブラウザ → GCLB → IAP ─(認証成功時のみ)→ 管理 UI
                   │
                   └─ X-Goog-Authenticated-User-Email ヘッダを付与
 ```
@@ -49,7 +54,7 @@ news 側の `iapMiddleware` はヘッダ存在確認と context への email 注
 
 - 運用者追加のたびに news のデプロイが必要になるのを避ける
 - IAP の IAM 管理 UI で完結させる方が運用者にとって自然
-- ヘッダ偽装の防御は「ポート `:9108` を ClusterIP に露出させない」という manifest 側の契約で担保する（k8s manifest 変更時はこの前提を検証する）
+- ヘッダ偽装の防御は「管理 UI のポートを認証済み経路以外に露出させない」というインフラ定義側の契約で担保する
 
 ### ENV=local での認証スキップ
 

@@ -36,7 +36,6 @@ services:
       GOWORK: "off"
       ENV: local
       INTERNAL_PORT: "9008"
-      ADMIN_PORT: "9108"
       DATABASE_CONN: host=postgres port=5432 dbname=news user=news password=news sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
       INTERNAL_AUTH_SECRET: dev-secret-not-for-prod
@@ -46,7 +45,6 @@ services:
       - news_gobuild:/root/.cache/go-build
     ports:
       - "9008:9008"
-      - "9108:9108"
 
 volumes:
   news_pgdata:

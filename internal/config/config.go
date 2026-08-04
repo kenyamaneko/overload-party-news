@@ -22,7 +22,6 @@ type Config struct {
 	Env Env
 
 	InternalPort int
-	AdminPort    int
 
 	DatabaseConn string
 
@@ -47,14 +46,6 @@ func FromEnv() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	adminPort, err := requireInt("ADMIN_PORT")
-	if err != nil {
-		return nil, err
-	}
-	if internalPort == adminPort {
-		return nil, fmt.Errorf("INTERNAL_PORT and ADMIN_PORT must differ (both = %d)", internalPort)
-	}
-
 	databaseConn, err := requireString("DATABASE_CONN")
 	if err != nil {
 		return nil, err
@@ -80,7 +71,6 @@ func FromEnv() (*Config, error) {
 	return &Config{
 		Env:                    env,
 		InternalPort:           internalPort,
-		AdminPort:              adminPort,
 		DatabaseConn:           databaseConn,
 		DatabaseIAMAuthEnabled: databaseIAMAuthEnabled,
 		CloudSQLConnectionName: cloudSQLConnectionName,
