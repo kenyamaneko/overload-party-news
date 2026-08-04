@@ -2,13 +2,68 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
+	"net/http"
 	"testing"
+	"time"
 
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kenyamaneko/overload-party-news/internal/domain"
+	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
+	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
+	"github.com/kenyamaneko/overload-party-news/internal/port"
+	"github.com/kenyamaneko/overload-party-news/internal/router"
+	"github.com/kenyamaneko/overload-party-news/internal/usecase/news"
 )
+
+func TestServe(t *testing.T) {
+	t.Run("gateway 向け内部 API サーバの起動と停止", func(t *testing.T) {
+		t.Run("起動中はニュース一覧の取得が 200 を返し、停止要求で終了する", func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+
+			srv := &http.Server{
+				Handler:           newPublicRouterWithStubs(),
+				ReadHeaderTimeout: 10 * time.Second,
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			served := make(chan error, 1)
+			go func() { served <- serve(ctx, srv, ln) }()
+
+			req, err := http.NewRequest(http.MethodGet, "http://"+ln.Addr().String()+"/api/v1/news?lang=ja&limit=10", nil)
+			require.NoError(t, err)
+			req.Header.Set(internalauth.HeaderName, "any.token")
+			client := &http.Client{Timeout: 5 * time.Second}
+			resp, err := client.Do(req)
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			cancel()
+			require.NoError(t, <-served)
+		})
+	})
+}
+
+// newPublicRouterWithStubs は記事なしを返す repo と常に成功する検証器で公開ルータを構築する。
+func newPublicRouterWithStubs() http.Handler {
+	querier := &port.MockNewsRepo{
+		ListPublishedFn: func(context.Context, string, int) ([]domain.PublishedArticleSummary, error) {
+			return []domain.PublishedArticleSummary{}, nil
+		},
+	}
+	verifier := &internalauth.MockVerifier{
+		VerifyFn: func(string) (string, error) { return "TST-PLAYER-1", nil },
+	}
+	pushH := pubsubpush.NewHandler(func(context.Context, []byte) error { return nil })
+	return router.NewPublic(rest.NewNewsHandler(news.New(querier)), verifier, pushH)
+}
 
 func TestCloudLoggingHandler(t *testing.T) {
 	t.Run("Cloud Logging 向けログ属性変換", func(t *testing.T) {

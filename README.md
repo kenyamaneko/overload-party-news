@@ -1,6 +1,8 @@
 # overload-party-news
 
-クラウドニュース記事の校閲・配信を行う内部マイクロサービス。`news-article-collected` Pub/Sub イベントを購読して自スキーマに永続化し、運用者が管理 UI で校閲した後に gateway 経由でクライアントへ配信する。gateway 向け REST は ClusterIP ポート 9008、管理 UI は IAP 背後のポート 9108 で起動する。
+クラウドニュース記事の校閲・配信を行う内部マイクロサービス。`news-article-collected` Pub/Sub イベントを購読して自スキーマに永続化し、校閲を通った記事を gateway 経由でクライアントへ配信する。起動するのは gateway 向け REST のポート 9008 のみ。
+
+校閲の管理 UI は当面提供せず、運用者が手作業で行う。将来は管理機能を別サービスとして用意する予定で、本リポの管理 UI のコードとドキュメントはその設計の下敷きとして残している。
 
 詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [REST 契約](data/openapi.yaml) / [Pub/Sub 契約](data/asyncapi.yaml) / [データ設計書](docs/DATA_DESIGN.md) を参照。
 
@@ -14,10 +16,6 @@ Gateway
        ├─ PostgreSQL (news スキーマ)
        └─ Pub/Sub push (HTTP)
             └─ news-article-collected ← newsfeed (Cloud Run Job)
-
-運用者 (ブラウザ)
-  └─ IAP (Google OAuth)
-       └─ News (:9108 admin UI)  ← 同一 Pod 内の別ポート
 ```
 
 書き込みは news 自身のみ。gateway からは配信のみ、newsfeed は Pub/Sub publish のみで DB には触れない。
@@ -33,7 +31,7 @@ curl -X POST http://localhost:9008/internal/v1/pubsub/news-article-collected \
   -d '{"message":{"data":"<ArticleCollectedEvent を JSON化して base64 化した文字列>"}}'
 ```
 インフラはホストへ publish せず内部ネットワークのサービス名 DNS で参照するため、他リポのローカル
-スタックやホスト上の他アプリとポートが衝突しない。ホストへ出るのは news の API ポート (REST 9008 / admin 9108) のみ。
+スタックやホスト上の他アプリとポートが衝突しない。ホストへ出るのは news の API ポート (REST 9008) のみ。
 
 ```bash
 make run      # アプリ + インフラを compose で起動（ソース bind-mount）
@@ -44,8 +42,6 @@ make test     # Testcontainers でテスト実行（Docker 必須）
 アプリはコンテナ内で `go run` する。ソースを編集して `docker compose restart news` すれば、
 イメージを作り直さずに反映される。private module は host の module cache を読み取り専用でマウント
 して解決するため、`make run` は先に host 側で `go mod download` を実行する。
-
-ローカル起動時は IAP middleware がスキップされ、`http://localhost:9108/admin/` に直接アクセスできる（`ENV=local` 時のみ）。
 
 ## 公開パッケージ
 

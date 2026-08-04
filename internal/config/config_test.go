@@ -17,7 +17,6 @@ const testPublicKeyPEM = "-----BEGIN PUBLIC KEY-----\ndummy-not-a-real-key\n----
 var envKeys = []string{
 	"ENV",
 	"INTERNAL_PORT",
-	"ADMIN_PORT",
 	"DATABASE_CONN",
 	"DATABASE_IAM_AUTH_ENABLED",
 	"CLOUDSQL_CONNECTION_NAME",
@@ -28,7 +27,6 @@ func validEnv() map[string]string {
 	return map[string]string{
 		"ENV":                       "local",
 		"INTERNAL_PORT":             "9008",
-		"ADMIN_PORT":                "9108",
 		"DATABASE_CONN":             "host=localhost dbname=news",
 		"DATABASE_IAM_AUTH_ENABLED": "false",
 		"INTERNAL_AUTH_PUBLIC_KEY":  testPublicKeyPEM,
@@ -95,18 +93,6 @@ func TestFromEnv(t *testing.T) {
 				mutate: func(m map[string]string) { m["INTERNAL_PORT"] = "abc" },
 			},
 			{
-				name:   "ADMIN_PORT が欠けるとき、エラーになる",
-				mutate: func(m map[string]string) { delete(m, "ADMIN_PORT") },
-			},
-			{
-				name:   "ADMIN_PORT が非整数のとき、エラーになる",
-				mutate: func(m map[string]string) { m["ADMIN_PORT"] = "abc" },
-			},
-			{
-				name:   "internal と admin が同ポートのとき、エラーになる",
-				mutate: func(m map[string]string) { m["ADMIN_PORT"] = m["INTERNAL_PORT"] },
-			},
-			{
 				name:   "DATABASE_CONN が欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "DATABASE_CONN") },
 			},
@@ -147,7 +133,6 @@ func TestFromEnv(t *testing.T) {
 			m := map[string]string{
 				"ENV":                       "production",
 				"INTERNAL_PORT":             "12345",
-				"ADMIN_PORT":                "12346",
 				"DATABASE_CONN":             "host=db dbname=news user=n password=p sslmode=disable",
 				"DATABASE_IAM_AUTH_ENABLED": "true",
 				"CLOUDSQL_CONNECTION_NAME":  "overload-party-dev:asia-northeast1:overload-party-db",
@@ -160,7 +145,6 @@ func TestFromEnv(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, config.EnvProduction, cfg.Env)
 			assert.Equal(t, 12345, cfg.InternalPort)
-			assert.Equal(t, 12346, cfg.AdminPort)
 			assert.Equal(t, m["DATABASE_CONN"], cfg.DatabaseConn)
 			assert.True(t, cfg.DatabaseIAMAuthEnabled)
 			assert.Equal(t, m["CLOUDSQL_CONNECTION_NAME"], cfg.CloudSQLConnectionName)
