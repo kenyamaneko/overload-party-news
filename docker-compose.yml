@@ -38,7 +38,17 @@ services:
       INTERNAL_PORT: "9008"
       DATABASE_CONN: host=postgres port=5432 dbname=news user=news password=news sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
-      INTERNAL_AUTH_SECRET: dev-secret-not-for-prod
+      # news は内部トークンの検証しか行わないため、ローカル専用に生成した公開鍵を置く。
+      INTERNAL_AUTH_PUBLIC_KEY: |
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzTzyrvfPNsxHXmA0OHrT
+        r9+8+gph5VZaEjg8C6DtjvnwizvjGJz5xwCusIMi2kjDQ84ls7lxskmEJTMOHb3N
+        yYHCEnx+ySduR4/9joQov3DctrMmAVcQVg8ldWxgz/jRJ6XjVSqx//AufvRaFQP2
+        aXxJ1ZklbNgXiSnQe+fHGKq/2sb2q7RRc+StdyUgEQZ0BhiksvGJXJGwiDSNyCAg
+        xUztw/YagvnTF6ngiP5FthHMAGtKhnqCzByanhyMuzEhzlWUMOtk/MLnnuRZyaBT
+        OrHkP/cOm+MTnXM2ljkZgo4X9gz7fJlLnZxYgWUTvTUG7oM3wO8czQ8tS1KTxBHZ
+        SwIDAQAB
+        -----END PUBLIC KEY-----
     volumes:
       - ./:/src
       - ${HOST_GOMODCACHE:?make run 経由で起動すること (go env GOMODCACHE を渡す必要がある)}:/go/pkg/mod:ro
