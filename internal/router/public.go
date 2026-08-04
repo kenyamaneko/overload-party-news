@@ -13,7 +13,7 @@ import (
 )
 
 // NewPublic は Cloud Run が公開する internal 向けルータを構築する。
-// /api/v1/news/* は gateway 経由の配信 API で、X-Internal-Auth (HMAC JWT) を必須とし
+// /api/v1/news/* は gateway 経由の配信 API で、X-Internal-Auth (RS256 JWT) を必須とし
 // middleware が sub クレームを context に注入する。
 // /internal/v1/pubsub/* は Pub/Sub push subscription の受け口。
 func NewPublic(newsH *rest.NewsHandler, authVerifier internalauth.Verifier, articleCollectedPushH *pubsubpush.Handler) *gin.Engine {
