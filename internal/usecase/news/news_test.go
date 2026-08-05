@@ -32,17 +32,17 @@ func TestList(t *testing.T) {
 			limit int
 		}{
 			{
-				name:  "lang=ja + limit=1 (下限) のとき、querier へ lang/limit を転送し、返った行を射影して返す",
+				name:  "lang=ja + limit=1 (下限)のとき、querierへlang/limitを転送し、返った行を射影して返す",
 				lang:  domain.LangJa,
 				limit: 1,
 			},
 			{
-				name:  "lang=ja + limit が上限のとき、querier へ lang/limit を転送し、返った行を射影して返す",
+				name:  "lang=ja + limitが上限のとき、querierへlang/limitを転送し、返った行を射影して返す",
 				lang:  domain.LangJa,
 				limit: news.ListLimitMax,
 			},
 			{
-				name:  "lang=en のとき、querier へ lang/limit を転送し、返った行を射影して返す",
+				name:  "lang=enのとき、querierへlang/limitを転送し、返った行を射影して返す",
 				lang:  domain.LangEn,
 				limit: validLimit,
 			},
@@ -79,37 +79,37 @@ func TestList(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name:    "lang 未指定のとき、querier を呼ばず ErrLangRequired になる",
+				name:    "lang未指定のとき、querierを呼ばずErrLangRequiredになる",
 				lang:    "",
 				limit:   news.ListLimitMax,
 				wantErr: news.ErrLangRequired,
 			},
 			{
-				name:    "lang 対応外のとき、querier を呼ばず ErrUnsupportedLang になる",
+				name:    "lang対応外のとき、querierを呼ばずErrUnsupportedLangになる",
 				lang:    "fr",
 				limit:   news.ListLimitMax,
 				wantErr: news.ErrUnsupportedLang,
 			},
 			{
-				name:    "lang=JA (大文字) のとき、querier を呼ばず ErrUnsupportedLang になる",
+				name:    "lang=JA (大文字)のとき、querierを呼ばずErrUnsupportedLangになる",
 				lang:    "JA",
 				limit:   news.ListLimitMax,
 				wantErr: news.ErrUnsupportedLang,
 			},
 			{
-				name:    "limit=0 のとき、querier を呼ばず ErrInvalidLimit になる",
+				name:    "limit=0のとき、querierを呼ばずErrInvalidLimitになる",
 				lang:    domain.LangJa,
 				limit:   0,
 				wantErr: news.ErrInvalidLimit,
 			},
 			{
-				name:    "limit=-1 (負値) のとき、querier を呼ばず ErrInvalidLimit になる",
+				name:    "limit=-1 (負値)のとき、querierを呼ばずErrInvalidLimitになる",
 				lang:    domain.LangJa,
 				limit:   -1,
 				wantErr: news.ErrInvalidLimit,
 			},
 			{
-				name:    "limit が上限+1 のとき、querier を呼ばず ErrInvalidLimit になる",
+				name:    "limitが上限+1のとき、querierを呼ばずErrInvalidLimitになる",
 				lang:    domain.LangJa,
 				limit:   news.ListLimitMax + 1,
 				wantErr: news.ErrInvalidLimit,
@@ -128,7 +128,7 @@ func TestList(t *testing.T) {
 			})
 		}
 
-		t.Run("querier がエラーを返すとき、List はそのままエラーを伝播する", func(t *testing.T) {
+		t.Run("querierがエラーを返すとき、Listはそのままエラーを伝播する", func(t *testing.T) {
 			wantErr := errors.New("querier: db connection lost")
 			repo := &port.MockNewsRepo{
 				ListPublishedFn: func(_ context.Context, _ string, _ int) ([]domain.PublishedArticleSummary, error) {
@@ -169,34 +169,34 @@ func TestGetDetail(t *testing.T) {
 			wantRepoHit bool
 		}{
 			{
-				name:        "成功時は domain DTO を apinews.NewsDetail に射影して返す",
+				name:        "成功時はdomain DTOをapinews.NewsDetailに射影して返す",
 				lang:        domain.LangJa,
 				repoReturn:  repoSuccess,
 				wantDetail:  wantSuccess,
 				wantRepoHit: true,
 			},
 			{
-				name:        "repo が ErrNotFound のとき、そのまま返る",
+				name:        "repoがErrNotFoundのとき、そのまま返る",
 				lang:        domain.LangJa,
 				repoErr:     port.ErrNotFound,
 				wantErr:     port.ErrNotFound,
 				wantRepoHit: true,
 			},
 			{
-				name:        "repo が DB 障害のとき、そのまま返る",
+				name:        "repoがDB障害のとき、そのまま返る",
 				lang:        domain.LangJa,
 				repoErr:     dbErr,
 				wantErr:     dbErr,
 				wantRepoHit: true,
 			},
 			{
-				name:        "lang 未指定のとき、repo を呼ばず ErrLangRequired になる",
+				name:        "lang未指定のとき、repoを呼ばずErrLangRequiredになる",
 				lang:        "",
 				wantErr:     news.ErrLangRequired,
 				wantRepoHit: false,
 			},
 			{
-				name:        "lang 対応外のとき、repo を呼ばず ErrUnsupportedLang になる",
+				name:        "lang対応外のとき、repoを呼ばずErrUnsupportedLangになる",
 				lang:        "fr",
 				wantErr:     news.ErrUnsupportedLang,
 				wantRepoHit: false,

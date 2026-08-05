@@ -14,7 +14,7 @@ import (
 
 func TestAuthMiddleware(t *testing.T) {
 	t.Run("管理画面の認証ミドルウェア", func(t *testing.T) {
-		t.Run("production 環境", func(t *testing.T) {
+		t.Run("production環境", func(t *testing.T) {
 			cases := []struct {
 				name         string
 				headers      map[string]string
@@ -22,25 +22,25 @@ func TestAuthMiddleware(t *testing.T) {
 				wantReviewer string
 			}{
 				{
-					name:         "プロバイダープレフィックス付きヘッダのとき、prefix を除いた email が reviewer になる",
+					name:         "プロバイダープレフィックス付きヘッダのとき、prefixを除いたemailがreviewerになる",
 					headers:      map[string]string{"X-Goog-Authenticated-User-Email": "accounts.google.com:alice@example.com"},
 					wantStatus:   http.StatusOK,
 					wantReviewer: "alice@example.com",
 				},
 				{
-					name:         "プレフィックスなしヘッダのとき、email がそのまま reviewer になる",
+					name:         "プレフィックスなしヘッダのとき、emailがそのままreviewerになる",
 					headers:      map[string]string{"X-Goog-Authenticated-User-Email": "bob@example.com"},
 					wantStatus:   http.StatusOK,
 					wantReviewer: "bob@example.com",
 				},
 				{
-					name:         "ヘッダが無いとき、401 になる",
+					name:         "ヘッダが無いとき、401になる",
 					headers:      nil,
 					wantStatus:   http.StatusUnauthorized,
 					wantReviewer: "",
 				},
 				{
-					name:         "プレフィックスのみで email が空のとき、401 になる",
+					name:         "プレフィックスのみでemailが空のとき、401になる",
 					headers:      map[string]string{"X-Goog-Authenticated-User-Email": "accounts.google.com:"},
 					wantStatus:   http.StatusUnauthorized,
 					wantReviewer: "",
@@ -71,7 +71,7 @@ func TestAuthMiddleware(t *testing.T) {
 			}
 		})
 
-		t.Run("local 環境ではヘッダが無くても固定の reviewer が注入される", func(t *testing.T) {
+		t.Run("local環境ではヘッダが無くても固定のreviewerが注入される", func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			var seenReviewer string
 			r := gin.New()

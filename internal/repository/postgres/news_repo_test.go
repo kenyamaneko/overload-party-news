@@ -105,8 +105,8 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 		Tags: []string{"x"}, Status: domain.StatusPending,
 	}
 
-	t.Run("記事と翻訳の INSERT", func(t *testing.T) {
-		t.Run("新規記事のとき、true を返し記事と翻訳が保存される", func(t *testing.T) {
+	t.Run("記事と翻訳のINSERT", func(t *testing.T) {
+		t.Run("新規記事のとき、trueを返し記事と翻訳が保存される", func(t *testing.T) {
 			repo := newRepo(t)
 
 			inserted, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "最初のタイトル", "最初の要約", "最初の本文")
@@ -122,7 +122,7 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 			assert.Equal(t, "最初の本文", aw.Translations[0].Body)
 		})
 
-		t.Run("同一 article_id が既存のとき、false を返し既存翻訳は上書きされない", func(t *testing.T) {
+		t.Run("同一article_idが既存のとき、falseを返し既存翻訳は上書きされない", func(t *testing.T) {
 			repo := newRepo(t)
 			_, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "最初のタイトル", "最初の要約", "最初の本文")
 			require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 			assert.Equal(t, "最初のタイトル", aw.Translations[0].Title)
 		})
 
-		t.Run("別 article_id でも source_url が既存のとき、false を返し記事も翻訳も追加されない", func(t *testing.T) {
+		t.Run("別article_idでもsource_urlが既存のとき、falseを返し記事も翻訳も追加されない", func(t *testing.T) {
 			repo := newRepo(t)
 			_, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "最初のタイトル", "最初の要約", "最初の本文")
 			require.NoError(t, err)
@@ -163,8 +163,8 @@ func TestTranslation_UnsupportedLang(t *testing.T) {
 	repo := newRepo(t)
 	_ = seedWithJa(t, repo, "01", domain.StatusPending)
 
-	t.Run("未対応 lang の拒否", func(t *testing.T) {
-		t.Run("取込で fr の翻訳を渡すとき、ErrInvalidPersistedValue になり記事も保存されない", func(t *testing.T) {
+	t.Run("未対応langの拒否", func(t *testing.T) {
+		t.Run("取込でfrの翻訳を渡すとき、ErrInvalidPersistedValueになり記事も保存されない", func(t *testing.T) {
 			article := domain.Article{
 				ArticleID: "02", Source: "aws", SourceURL: "https://aws.amazon.com/b",
 				Tags: []string{}, Status: domain.StatusPending,
@@ -182,11 +182,11 @@ func TestTranslation_UnsupportedLang(t *testing.T) {
 			lang string
 		}{
 			{
-				name: "UpsertTranslation に fr を渡すとき、ErrInvalidPersistedValue になる",
+				name: "UpsertTranslationにfrを渡すとき、ErrInvalidPersistedValueになる",
 				lang: "fr",
 			},
 			{
-				name: "UpsertTranslation に空 lang を渡すとき、ErrInvalidPersistedValue になる",
+				name: "UpsertTranslationに空langを渡すとき、ErrInvalidPersistedValueになる",
 				lang: "",
 			},
 		}
@@ -227,12 +227,12 @@ func TestListPublished(t *testing.T) {
 			wantIDs []string
 		}{
 			{
-				name:    "lang=ja のとき、公開済み 2 件を返す",
+				name:    "lang=jaのとき、公開済み2件を返す",
 				lang:    domain.LangJa,
 				wantIDs: []string{"both", "ja-only"}, // published_at 降順 (both が新しい)
 			},
 			{
-				name:    "lang=en のとき、en 翻訳を持つ 1 件を返す (ja-only 除外)",
+				name:    "lang=enのとき、en翻訳を持つ1件を返す (ja-only除外)",
 				lang:    domain.LangEn,
 				wantIDs: []string{"both"},
 			},
@@ -252,7 +252,7 @@ func TestListPublished(t *testing.T) {
 		}
 	})
 
-	t.Run("公開記事一覧の limit 打ち切りと並び順", func(t *testing.T) {
+	t.Run("公開記事一覧のlimit打ち切りと並び順", func(t *testing.T) {
 		t1 := fixedNow
 		t2 := fixedNow.Add(1 * time.Hour)
 		t3 := fixedNow.Add(2 * time.Hour)
@@ -264,7 +264,7 @@ func TestListPublished(t *testing.T) {
 			wantIDs []string
 		}{
 			{
-				name: "published_at が異なる公開記事 3 件で limit=2 のとき、published_at の新しい 2 件だけが返る",
+				name: "published_atが異なる公開記事3件でlimit=2のとき、published_atの新しい2件だけが返る",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", t1)
 					seedPublishedAt(t, ctx, repo, "TST-0002", t2)
@@ -274,7 +274,7 @@ func TestListPublished(t *testing.T) {
 				wantIDs: []string{"TST-0003", "TST-0002"},
 			},
 			{
-				name: "published_at が異なる公開記事 3 件で limit=3 のとき、3 件全件が返る",
+				name: "published_atが異なる公開記事3件でlimit=3のとき、3件全件が返る",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", t1)
 					seedPublishedAt(t, ctx, repo, "TST-0002", t2)
@@ -284,7 +284,7 @@ func TestListPublished(t *testing.T) {
 				wantIDs: []string{"TST-0003", "TST-0002", "TST-0001"},
 			},
 			{
-				name: "published_at が異なる 2 件のとき、article_id の大小によらず published_at の新しい順に返る",
+				name: "published_atが異なる2件のとき、article_idの大小によらずpublished_atの新しい順に返る",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0009", t1)
 					seedPublishedAt(t, ctx, repo, "TST-0001", t2)
@@ -293,7 +293,7 @@ func TestListPublished(t *testing.T) {
 				wantIDs: []string{"TST-0001", "TST-0009"},
 			},
 			{
-				name: "published_at が同時刻の 2 件のとき、article_id の降順で返る",
+				name: "published_atが同時刻の2件のとき、article_idの降順で返る",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", t1)
 					seedPublishedAt(t, ctx, repo, "TST-0002", t1)
@@ -327,14 +327,14 @@ func TestListPublished(t *testing.T) {
 			wantIDs []string
 		}{
 			{
-				name: "承認直後 (published_at = reviewed_at) の記事は一覧に含まれる",
+				name: "承認直後 (published_at = reviewed_at)の記事は一覧に含まれる",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
 				},
 				wantIDs: []string{"TST-0001"},
 			},
 			{
-				name: "未校閲 (reviewed_at 未設定) の記事があるとき、一覧に含まれない",
+				name: "未校閲 (reviewed_at未設定)の記事があるとき、一覧に含まれない",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
 					_ = seedWithJa(t, repo, "TST-0002", domain.StatusPending)
@@ -342,7 +342,7 @@ func TestListPublished(t *testing.T) {
 				wantIDs: []string{"TST-0001"},
 			},
 			{
-				name: "校閲のみで公開時刻が無い (published_at 未設定) 記事があるとき、一覧に含まれない",
+				name: "校閲のみで公開時刻が無い (published_at未設定)記事があるとき、一覧に含まれない",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
 					_ = seedWithJa(t, repo, "TST-0002", domain.StatusRejected)
@@ -350,7 +350,7 @@ func TestListPublished(t *testing.T) {
 				wantIDs: []string{"TST-0001"},
 			},
 			{
-				name: "承認後に却下された (published_at < reviewed_at) 記事があるとき、一覧に含まれない",
+				name: "承認後に却下された (published_at < reviewed_at)記事があるとき、一覧に含まれない",
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
 					seedPublishedAt(t, ctx, repo, "TST-0002", fixedNow)
@@ -400,12 +400,12 @@ func TestGetPublishedByID(t *testing.T) {
 			lang string
 		}{
 			{
-				name: "published + ja のとき、記事を返す",
+				name: "published + jaのとき、記事を返す",
 				id:   "published-ja",
 				lang: domain.LangJa,
 			},
 			{
-				name: "published + en 翻訳ありのとき、記事を返す",
+				name: "published + en翻訳ありのとき、記事を返す",
 				id:   "published-both",
 				lang: domain.LangEn,
 			},
@@ -423,22 +423,22 @@ func TestGetPublishedByID(t *testing.T) {
 			lang string
 		}{
 			{
-				name: "published + en 翻訳なしのとき、ErrNotFound になる",
+				name: "published + en翻訳なしのとき、ErrNotFoundになる",
 				id:   "published-ja",
 				lang: domain.LangEn,
 			},
 			{
-				name: "pending のとき、ErrNotFound になる",
+				name: "pendingのとき、ErrNotFoundになる",
 				id:   "pending",
 				lang: domain.LangJa,
 			},
 			{
-				name: "rejected のとき、ErrNotFound になる",
+				name: "rejectedのとき、ErrNotFoundになる",
 				id:   "rejected",
 				lang: domain.LangJa,
 			},
 			{
-				name: "非存在 id のとき、ErrNotFound になる",
+				name: "非存在idのとき、ErrNotFoundになる",
 				id:   "ghost",
 				lang: domain.LangJa,
 			},
@@ -467,8 +467,8 @@ func TestListArticles(t *testing.T) {
 			limit   int
 			wantIDs []string
 		}{
-			{name: "limit=100 のとき、ingested_at 降順で全 4 件を返す", limit: 100, wantIDs: []string{"rej", "pub", "p2", "p1"}},
-			{name: "limit=2 のとき、ingested_at が新しい 2 件に絞られる", limit: 2, wantIDs: []string{"rej", "pub"}},
+			{name: "limit=100のとき、ingested_at降順で全4件を返す", limit: 100, wantIDs: []string{"rej", "pub", "p2", "p1"}},
+			{name: "limit=2のとき、ingested_atが新しい2件に絞られる", limit: 2, wantIDs: []string{"rej", "pub"}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -493,14 +493,14 @@ func TestListTranslationsByArticleIDs(t *testing.T) {
 	require.NoError(t, repo.UpsertTranslation(ctx, "a1", domain.LangEn, "en", "s", "b"))
 	_ = seedWithJa(t, repo, "a2", domain.StatusPending)
 
-	t.Run("記事 ID 群からの翻訳取得", func(t *testing.T) {
+	t.Run("記事ID群からの翻訳取得", func(t *testing.T) {
 		cases := []struct {
 			name    string
 			ids     []string
 			wantLen int
 		}{
-			{name: "空入力のとき、0 件を返す", ids: nil, wantLen: 0},
-			{name: "複数 ID のとき、全翻訳 (a1 の ja+en と a2 の ja で 3 件) を返す", ids: []string{"a1", "a2"}, wantLen: 3},
+			{name: "空入力のとき、0件を返す", ids: nil, wantLen: 0},
+			{name: "複数IDのとき、全翻訳 (a1のja+enとa2のjaで3件)を返す", ids: []string{"a1", "a2"}, wantLen: 3},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -526,17 +526,17 @@ func TestGetArticleByID(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name:    "pending 記事のとき、エラーにならない",
+				name:    "pending記事のとき、エラーにならない",
 				id:      "pend",
 				wantErr: nil,
 			},
 			{
-				name:    "rejected 記事のとき、エラーにならない",
+				name:    "rejected記事のとき、エラーにならない",
 				id:      "rej",
 				wantErr: nil,
 			},
 			{
-				name:    "非存在 id のとき、ErrNotFound になる",
+				name:    "非存在idのとき、ErrNotFoundになる",
 				id:      "ghost",
 				wantErr: port.ErrNotFound,
 			},
@@ -561,15 +561,15 @@ func TestUpdateNotFound(t *testing.T) {
 			op   func() error
 		}{
 			{
-				name: "Publish で存在しない記事のとき、ErrNotFound になる",
+				name: "Publishで存在しない記事のとき、ErrNotFoundになる",
 				op:   func() error { return repo.Publish(ctx, "ghost", "x", fixedNow) },
 			},
 			{
-				name: "Reject で存在しない記事のとき、ErrNotFound になる",
+				name: "Rejectで存在しない記事のとき、ErrNotFoundになる",
 				op:   func() error { return repo.Reject(ctx, "ghost", "x", fixedNow) },
 			},
 			{
-				name: "UpsertTranslation で存在しない記事のとき、ErrNotFound になる",
+				name: "UpsertTranslationで存在しない記事のとき、ErrNotFoundになる",
 				op:   func() error { return repo.UpsertTranslation(ctx, "ghost", domain.LangEn, "t", "s", "b") },
 			},
 		}
@@ -600,14 +600,14 @@ func TestPublish(t *testing.T) {
 			wantReviewer    string
 		}{
 			{
-				name:            "初回承認のとき、published_at / reviewed_at / reviewer が now にセットされる",
+				name:            "初回承認のとき、published_at / reviewed_at / reviewerがnowにセットされる",
 				publishes:       []publishOp{{"alice@example.com", first}},
 				wantPublishedAt: first,
 				wantReviewedAt:  first,
 				wantReviewer:    "alice@example.com",
 			},
 			{
-				name:            "再承認のとき、published_at / reviewed_at / reviewer が最新値で上書きされる",
+				name:            "再承認のとき、published_at / reviewed_at / reviewerが最新値で上書きされる",
 				publishes:       []publishOp{{"alice@example.com", first}, {"bob@example.com", second}},
 				wantPublishedAt: second,
 				wantReviewedAt:  second,
@@ -644,7 +644,7 @@ func TestReject(t *testing.T) {
 	_ = seedWithJa(t, repo, "01", domain.StatusPending)
 
 	t.Run("記事の却下", func(t *testing.T) {
-		t.Run("承認後に却下すると、published_at は据え置きで reviewed_at が却下時刻になる", func(t *testing.T) {
+		t.Run("承認後に却下すると、published_atは据え置きでreviewed_atが却下時刻になる", func(t *testing.T) {
 			pub := fixedNow
 			rej := fixedNow.Add(1 * time.Hour)
 			require.NoError(t, repo.Publish(ctx, "01", "alice@example.com", pub))
@@ -667,7 +667,7 @@ func TestUpsertTranslation(t *testing.T) {
 	}
 	noPreOp := func(_ *testing.T, _ context.Context, _ *postgres.NewsRepository) {}
 
-	t.Run("翻訳の UPSERT", func(t *testing.T) {
+	t.Run("翻訳のUPSERT", func(t *testing.T) {
 		cases := []struct {
 			name        string
 			preOp       func(t *testing.T, ctx context.Context, repo *postgres.NewsRepository)
@@ -676,7 +676,7 @@ func TestUpsertTranslation(t *testing.T) {
 			assertAfter func(t *testing.T, before, after *domain.ArticleWithTranslations, op opArgs)
 		}{
 			{
-				name:  "未存在 lang のとき、INSERT で追加される (en)",
+				name:  "未存在langのとき、INSERTで追加される (en)",
 				preOp: noPreOp,
 				op:    opArgs{domain.LangEn, "en-title", "en-summary", "en-body"},
 				assertAfter: func(t *testing.T, _, after *domain.ArticleWithTranslations, op opArgs) {
@@ -687,7 +687,7 @@ func TestUpsertTranslation(t *testing.T) {
 				},
 			},
 			{
-				name:  "既存 lang のとき、UPDATE で上書きされる (ja)",
+				name:  "既存langのとき、UPDATEで上書きされる (ja)",
 				preOp: noPreOp,
 				op:    opArgs{domain.LangJa, "updated", "updated-s", "updated-b"},
 				assertAfter: func(t *testing.T, _, after *domain.ArticleWithTranslations, op opArgs) {
@@ -698,7 +698,7 @@ func TestUpsertTranslation(t *testing.T) {
 				},
 			},
 			{
-				name:     "既存 lang を UPDATE するとき、trigger で translation.updated_at が進む",
+				name:     "既存langをUPDATEするとき、triggerでtranslation.updated_atが進む",
 				preOp:    noPreOp,
 				preSleep: 5 * time.Millisecond,
 				op:       opArgs{domain.LangJa, "new", "new-s", "new-b"},
@@ -709,7 +709,7 @@ func TestUpsertTranslation(t *testing.T) {
 				},
 			},
 			{
-				name: "翻訳を UPSERT しても、親記事の status / reviewed_at / reviewer / published_at / updated_at は不変",
+				name: "翻訳をUPSERTしても、親記事のstatus / reviewed_at / reviewer / published_at / updated_atは不変",
 				// publish しておき reviewed_at / reviewer / published_at に値を入れた状態で観測する
 				preOp: func(t *testing.T, ctx context.Context, repo *postgres.NewsRepository) {
 					require.NoError(t, repo.Publish(ctx, "01", "alice@example.com", fixedNow))
@@ -748,7 +748,7 @@ func TestUpsertTranslation(t *testing.T) {
 }
 
 func TestColumnWidthDrift(t *testing.T) {
-	t.Run("domain の最大文字数と適用済みスキーマの列幅の整合", func(t *testing.T) {
+	t.Run("domainの最大文字数と適用済みスキーマの列幅の整合", func(t *testing.T) {
 		cases := []struct {
 			name   string
 			table  string
@@ -756,19 +756,19 @@ func TestColumnWidthDrift(t *testing.T) {
 			want   int
 		}{
 			{
-				name:   "記事 ID の最大文字数が news_articles.article_id の列幅と一致する",
+				name:   "記事IDの最大文字数がnews_articles.article_idの列幅と一致する",
 				table:  "news_articles",
 				column: "article_id",
 				want:   domain.MaxArticleIDLength,
 			},
 			{
-				name:   "記事 ID の最大文字数が news_article_translations.article_id の列幅と一致する",
+				name:   "記事IDの最大文字数がnews_article_translations.article_idの列幅と一致する",
 				table:  "news_article_translations",
 				column: "article_id",
 				want:   domain.MaxArticleIDLength,
 			},
 			{
-				name:   "ソース種別の最大文字数が news_articles.source の列幅と一致する",
+				name:   "ソース種別の最大文字数がnews_articles.sourceの列幅と一致する",
 				table:  "news_articles",
 				column: "source",
 				want:   domain.MaxSourceLength,

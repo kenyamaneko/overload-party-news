@@ -42,23 +42,23 @@ func TestInsert(t *testing.T) {
 			mutate func(*apinews.ArticleCollectedEvent)
 		}{
 			{
-				name:   "完全なイベント (ja 1 件) のとき、記事と翻訳が INSERT される",
+				name:   "完全なイベント (ja 1件)のとき、記事と翻訳がINSERTされる",
 				mutate: func(_ *apinews.ArticleCollectedEvent) {},
 			},
 			{
-				name:   "source_published_at が null でも、INSERT される",
+				name:   "source_published_atがnullでも、INSERTされる",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.SourcePublishedAt = nil },
 			},
 			{
-				name:   "tags が nil でも、INSERT される",
+				name:   "tagsがnilでも、INSERTされる",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Tags = nil },
 			},
 			{
-				name:   "article_id が 26 文字のとき、INSERT される",
+				name:   "article_idが26文字のとき、INSERTされる",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" },
 			},
 			{
-				name:   "source が 20 文字のとき、INSERT される",
+				name:   "sourceが20文字のとき、INSERTされる",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "12345678901234567890" },
 			},
 		}
@@ -92,53 +92,53 @@ func TestInsert(t *testing.T) {
 			mutate func(*apinews.ArticleCollectedEvent)
 		}{
 			{
-				name: "翻訳が ja + en の 2 件のとき、拒否される",
+				name: "翻訳がja + enの2件のとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) {
 					e.Translations = append(e.Translations, apinews.EventTranslation{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"})
 				},
 			},
 			{
-				name:   "article_id 欠けのとき、拒否される",
+				name:   "article_id欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "" },
 			},
 			{
-				name:   "article_id が 27 文字のとき、拒否される",
+				name:   "article_idが27文字のとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "ABCDEFGHIJKLMNOPQRSTUVWXYZ7" },
 			},
 			{
-				name:   "source 欠けのとき、拒否される",
+				name:   "source欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "" },
 			},
 			{
-				name:   "source が 21 文字のとき、拒否される",
+				name:   "sourceが21文字のとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "123456789012345678901" },
 			},
 			{
-				name:   "source_url 欠けのとき、拒否される",
+				name:   "source_url欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.SourceURL = "" },
 			},
 			{
-				name:   "translations 空のとき、拒否される",
+				name:   "translations空のとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations = nil },
 			},
 			{
-				name:   "translations[0].lang が en (ja 以外) のとき、拒否される",
+				name:   "translations[0].langがen (ja以外)のとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = domain.LangEn },
 			},
 			{
-				name:   "translations[0].lang 欠けのとき、拒否される",
+				name:   "translations[0].lang欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = "" },
 			},
 			{
-				name:   "translations[0].title 欠けのとき、拒否される",
+				name:   "translations[0].title欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Title = "" },
 			},
 			{
-				name:   "translations[0].summary 欠けのとき、拒否される",
+				name:   "translations[0].summary欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Summary = "" },
 			},
 			{
-				name:   "translations[0].body 欠けのとき、拒否される",
+				name:   "translations[0].body欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Body = "" },
 			},
 		}
@@ -167,12 +167,12 @@ func TestInsert(t *testing.T) {
 			wantInserted bool
 		}{
 			{
-				name:         "記事が新規挿入のとき、inserted=true を返す",
+				name:         "記事が新規挿入のとき、inserted=trueを返す",
 				writeResult:  true,
 				wantInserted: true,
 			},
 			{
-				name:         "記事が既に取り込み済みのとき、inserted=false を返す",
+				name:         "記事が既に取り込み済みのとき、inserted=falseを返す",
 				writeResult:  false,
 				wantInserted: false,
 			},
@@ -192,7 +192,7 @@ func TestInsert(t *testing.T) {
 			})
 		}
 
-		t.Run("INSERT で DB 障害のとき、そのエラーが伝播する", func(t *testing.T) {
+		t.Run("INSERTでDB障害のとき、そのエラーが伝播する", func(t *testing.T) {
 			dbErr := errors.New("db lost")
 			repo := &port.MockNewsRepo{
 				InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {

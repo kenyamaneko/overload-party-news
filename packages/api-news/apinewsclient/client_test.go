@@ -17,24 +17,24 @@ import (
 // 宣言する error status を網羅する。
 
 func TestClient_ListNews_StatusMapping(t *testing.T) {
-	t.Run("ListNews のステータスマッピング", func(t *testing.T) {
+	t.Run("ListNewsのステータスマッピング", func(t *testing.T) {
 		cases := []struct {
 			name       string
 			status     int
 			wantTarget error
 		}{
 			{
-				name:       "400 を受けたとき、ErrBadRequest になる",
+				name:       "400を受けたとき、ErrBadRequestになる",
 				status:     http.StatusBadRequest,
 				wantTarget: apinewsclient.ErrBadRequest,
 			},
 			{
-				name:       "401 を受けたとき、ErrUnauthorized になる",
+				name:       "401を受けたとき、ErrUnauthorizedになる",
 				status:     http.StatusUnauthorized,
 				wantTarget: apinewsclient.ErrUnauthorized,
 			},
 			{
-				name:       "500 を受けたとき、ErrInternalServer になる",
+				name:       "500を受けたとき、ErrInternalServerになる",
 				status:     http.StatusInternalServerError,
 				wantTarget: apinewsclient.ErrInternalServer,
 			},
@@ -52,7 +52,7 @@ func TestClient_ListNews_StatusMapping(t *testing.T) {
 			})
 		}
 
-		t.Run("契約に無い 403 を受けたとき、想定外のステータスとしてエラーになる", func(t *testing.T) {
+		t.Run("契約に無い403を受けたとき、想定外のステータスとしてエラーになる", func(t *testing.T) {
 			srv := apinewsserverfake.NewServer()
 			defer srv.Close()
 			srv.ListNewsFn = func(_ string, _ int) (int, any) { return http.StatusForbidden, nil }
@@ -67,29 +67,29 @@ func TestClient_ListNews_StatusMapping(t *testing.T) {
 }
 
 func TestClient_GetNewsDetail_StatusMapping(t *testing.T) {
-	t.Run("GetNewsDetail のステータスマッピング", func(t *testing.T) {
+	t.Run("GetNewsDetailのステータスマッピング", func(t *testing.T) {
 		cases := []struct {
 			name       string
 			status     int
 			wantTarget error
 		}{
 			{
-				name:       "400 を受けたとき、ErrBadRequest になる",
+				name:       "400を受けたとき、ErrBadRequestになる",
 				status:     http.StatusBadRequest,
 				wantTarget: apinewsclient.ErrBadRequest,
 			},
 			{
-				name:       "401 を受けたとき、ErrUnauthorized になる",
+				name:       "401を受けたとき、ErrUnauthorizedになる",
 				status:     http.StatusUnauthorized,
 				wantTarget: apinewsclient.ErrUnauthorized,
 			},
 			{
-				name:       "404 を受けたとき、ErrNotFound になる",
+				name:       "404を受けたとき、ErrNotFoundになる",
 				status:     http.StatusNotFound,
 				wantTarget: apinewsclient.ErrNotFound,
 			},
 			{
-				name:       "500 を受けたとき、ErrInternalServer になる",
+				name:       "500を受けたとき、ErrInternalServerになる",
 				status:     http.StatusInternalServerError,
 				wantTarget: apinewsclient.ErrInternalServer,
 			},
@@ -111,7 +111,7 @@ func TestClient_GetNewsDetail_StatusMapping(t *testing.T) {
 
 func TestClient_RequestEditor(t *testing.T) {
 	t.Run("リクエストエディタの適用", func(t *testing.T) {
-		t.Run("WithRequestEditorFn で渡した editor が全リクエストに適用される", func(t *testing.T) {
+		t.Run("WithRequestEditorFnで渡したeditorが全リクエストに適用される", func(t *testing.T) {
 			// X-Internal-Auth header 注入の接続点として SDK が機能することを担保する。
 			var gotHeader string
 			spy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

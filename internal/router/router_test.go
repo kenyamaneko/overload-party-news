@@ -65,11 +65,11 @@ func TestNewPublic_ApiRouteRequiresInternalAuth(t *testing.T) {
 		path string
 	}{
 		{
-			name: "一覧は認証ヘッダ欠落で 401 を返し、応答に認証ヘッダ必須の内容が含まれる",
+			name: "一覧は認証ヘッダ欠落で401を返し、応答に認証ヘッダ必須の内容が含まれる",
 			path: "/api/v1/news?lang=ja&limit=10",
 		},
 		{
-			name: "詳細は認証ヘッダ欠落で 401 を返し、応答に認証ヘッダ必須の内容が含まれる",
+			name: "詳細は認証ヘッダ欠落で401を返し、応答に認証ヘッダ必須の内容が含まれる",
 			path: "/api/v1/news/ART-TST-0001?lang=ja",
 		},
 	}
@@ -108,8 +108,8 @@ func TestNewPublic_ApiRouteWithValidTokenReachesHandler(t *testing.T) {
 }
 
 func TestNewPublic_PubsubPushRouteSkipsAuth(t *testing.T) {
-	t.Run("pubsub push ルーティング", func(t *testing.T) {
-		t.Run("認証ヘッダが無いとき、push handler まで到達し復号済みの本文が渡る", func(t *testing.T) {
+	t.Run("pubsub pushルーティング", func(t *testing.T) {
+		t.Run("認証ヘッダが無いとき、push handlerまで到達し復号済みの本文が渡る", func(t *testing.T) {
 			var gotData []byte
 			// VerifyFn 未設定: verifier に到達しないことの検出を兼ねる
 			r := newTestPublicRouter(&internalauth.MockVerifier{}, func(_ context.Context, data []byte) error {
@@ -128,8 +128,8 @@ func TestNewPublic_PubsubPushRouteSkipsAuth(t *testing.T) {
 }
 
 func TestNewPublic_PubsubPushRouteRejectsUnknownEventPath(t *testing.T) {
-	t.Run("pubsub push ルーティング", func(t *testing.T) {
-		t.Run("未登録のイベント名パスのとき、404 を返し push handler を呼ばない", func(t *testing.T) {
+	t.Run("pubsub pushルーティング", func(t *testing.T) {
+		t.Run("未登録のイベント名パスのとき、404を返しpush handlerを呼ばない", func(t *testing.T) {
 			var called bool
 			r := newTestPublicRouter(&internalauth.MockVerifier{}, func(context.Context, []byte) error {
 				called = true
@@ -153,11 +153,11 @@ func TestRequestLogger(t *testing.T) {
 			status    int
 			wantLevel string
 		}{
-			{name: "status 200 のとき、INFO レベルで記録される", status: http.StatusOK, wantLevel: "INFO"},
-			{name: "status 399 のとき、INFO レベルで記録される", status: 399, wantLevel: "INFO"},
-			{name: "status 400 のとき、WARN レベルで記録される", status: http.StatusBadRequest, wantLevel: "WARN"},
-			{name: "status 499 のとき、WARN レベルで記録される", status: 499, wantLevel: "WARN"},
-			{name: "status 500 のとき、ERROR レベルで記録される", status: http.StatusInternalServerError, wantLevel: "ERROR"},
+			{name: "status 200のとき、INFOレベルで記録される", status: http.StatusOK, wantLevel: "INFO"},
+			{name: "status 399のとき、INFOレベルで記録される", status: 399, wantLevel: "INFO"},
+			{name: "status 400のとき、WARNレベルで記録される", status: http.StatusBadRequest, wantLevel: "WARN"},
+			{name: "status 499のとき、WARNレベルで記録される", status: 499, wantLevel: "WARN"},
+			{name: "status 500のとき、ERRORレベルで記録される", status: http.StatusInternalServerError, wantLevel: "ERROR"},
 		}
 
 		for _, tc := range cases {

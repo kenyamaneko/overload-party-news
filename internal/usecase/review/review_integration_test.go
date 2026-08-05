@@ -66,7 +66,7 @@ func TestListLimitWindow(t *testing.T) {
 	})
 	repo := postgres.NewNewsRepository(pg.Pool)
 
-	t.Run("limit 窓と status フィルタ", func(t *testing.T) {
+	t.Run("limit窓とstatusフィルタ", func(t *testing.T) {
 		cases := []struct {
 			name    string
 			seeds   []seedSpec // ingested_at 昇順 (末尾が最新)
@@ -75,7 +75,7 @@ func TestListLimitWindow(t *testing.T) {
 			wantIDs []string // review.List の返却順 (ingested_at DESC) で期待値を並べる
 		}{
 			{
-				name: "件数が limit を超えるとき、最新 limit 件で打ち切られ ingested_at DESC 上位が残る",
+				name: "件数がlimitを超えるとき、最新limit件で打ち切られingested_at DESC上位が残る",
 				seeds: []seedSpec{
 					{"a1", domain.StatusPending},
 					{"a2", domain.StatusPending},
@@ -88,7 +88,7 @@ func TestListLimitWindow(t *testing.T) {
 				wantIDs: []string{"a5", "a4", "a3"},
 			},
 			{
-				name: "limit 超過のとき、フィルタは最新 limit 件の窓内だけに効き窓外の該当 status は拾い直さない",
+				name: "limit超過のとき、フィルタは最新limit件の窓内だけに効き窓外の該当statusは拾い直さない",
 				seeds: []seedSpec{
 					{"pub-out-a", domain.StatusPublished},
 					{"pub-out-b", domain.StatusPublished},

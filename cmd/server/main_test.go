@@ -23,8 +23,8 @@ import (
 )
 
 func TestServe(t *testing.T) {
-	t.Run("gateway 向け内部 API サーバの起動と停止", func(t *testing.T) {
-		t.Run("起動中はニュース一覧の取得が 200 を返し、停止要求で終了する", func(t *testing.T) {
+	t.Run("gateway向け内部APIサーバの起動と停止", func(t *testing.T) {
+		t.Run("起動中はニュース一覧の取得が200を返し、停止要求で終了する", func(t *testing.T) {
 			ln, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
 
@@ -66,24 +66,24 @@ func newPublicRouterWithStubs() http.Handler {
 }
 
 func TestCloudLoggingHandler(t *testing.T) {
-	t.Run("Cloud Logging 向けログ属性変換", func(t *testing.T) {
+	t.Run("Cloud Logging向けログ属性変換", func(t *testing.T) {
 		cases := []struct {
 			name         string
 			log          func(l *slog.Logger)
 			wantSeverity string
 		}{
 			{
-				name:         "Error レベルで出力すると、severity が ERROR になる",
+				name:         "Errorレベルで出力すると、severityがERRORになる",
 				log:          func(l *slog.Logger) { l.Error("boom") },
 				wantSeverity: "ERROR",
 			},
 			{
-				name:         "Warn レベルで出力すると、severity が WARNING になる",
+				name:         "Warnレベルで出力すると、severityがWARNINGになる",
 				log:          func(l *slog.Logger) { l.Warn("boom") },
 				wantSeverity: "WARNING",
 			},
 			{
-				name:         "Info レベルで出力すると、severity が INFO になる",
+				name:         "Infoレベルで出力すると、severityがINFOになる",
 				log:          func(l *slog.Logger) { l.Info("boom") },
 				wantSeverity: "INFO",
 			},

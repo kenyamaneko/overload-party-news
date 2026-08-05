@@ -34,25 +34,25 @@ func validEnv() map[string]string {
 }
 
 func TestFromEnv(t *testing.T) {
-	t.Run("環境変数からの Config 構築", func(t *testing.T) {
+	t.Run("環境変数からのConfig構築", func(t *testing.T) {
 		validCases := []struct {
 			name   string
 			mutate func(m map[string]string)
 		}{
 			{
-				name:   "全 env が揃うとき、Config が構築される",
+				name:   "全envが揃うとき、Configが構築される",
 				mutate: func(_ map[string]string) {},
 			},
 			{
-				name:   "ENV が staging のとき、Config が構築される",
+				name:   "ENVがstagingのとき、Configが構築される",
 				mutate: func(m map[string]string) { m["ENV"] = "staging" },
 			},
 			{
-				name:   "ENV が production のとき、Config が構築される",
+				name:   "ENVがproductionのとき、Configが構築される",
 				mutate: func(m map[string]string) { m["ENV"] = "production" },
 			},
 			{
-				name: "DATABASE_IAM_AUTH_ENABLED が true かつ CLOUDSQL_CONNECTION_NAME が指定されるとき、Config が構築される",
+				name: "DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが指定されるとき、Configが構築される",
 				mutate: func(m map[string]string) {
 					m["DATABASE_IAM_AUTH_ENABLED"] = "true"
 					m["CLOUDSQL_CONNECTION_NAME"] = "overload-party-dev:asia-northeast1:overload-party-db"
@@ -77,42 +77,42 @@ func TestFromEnv(t *testing.T) {
 			mutate func(m map[string]string)
 		}{
 			{
-				name:   "ENV が欠けるとき、エラーになる",
+				name:   "ENVが欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "ENV") },
 			},
 			{
-				name:   "ENV が未知値のとき、エラーになる",
+				name:   "ENVが未知値のとき、エラーになる",
 				mutate: func(m map[string]string) { m["ENV"] = "dev" },
 			},
 			{
-				name:   "INTERNAL_PORT が欠けるとき、エラーになる",
+				name:   "INTERNAL_PORTが欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "INTERNAL_PORT") },
 			},
 			{
-				name:   "INTERNAL_PORT が非整数のとき、エラーになる",
+				name:   "INTERNAL_PORTが非整数のとき、エラーになる",
 				mutate: func(m map[string]string) { m["INTERNAL_PORT"] = "abc" },
 			},
 			{
-				name:   "DATABASE_CONN が欠けるとき、エラーになる",
+				name:   "DATABASE_CONNが欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "DATABASE_CONN") },
 			},
 			{
-				name:   "DATABASE_IAM_AUTH_ENABLED が欠けるとき、エラーになる",
+				name:   "DATABASE_IAM_AUTH_ENABLEDが欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "DATABASE_IAM_AUTH_ENABLED") },
 			},
 			{
-				name:   `DATABASE_IAM_AUTH_ENABLED が "true"/"false" 以外の "yes" のとき、エラーになる`,
+				name:   `DATABASE_IAM_AUTH_ENABLEDが "true"/"false" 以外の "yes" のとき、エラーになる`,
 				mutate: func(m map[string]string) { m["DATABASE_IAM_AUTH_ENABLED"] = "yes" },
 			},
 			{
-				name: "DATABASE_IAM_AUTH_ENABLED が true かつ CLOUDSQL_CONNECTION_NAME が欠けるとき、エラーになる",
+				name: "DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが欠けるとき、エラーになる",
 				mutate: func(m map[string]string) {
 					m["DATABASE_IAM_AUTH_ENABLED"] = "true"
 					delete(m, "CLOUDSQL_CONNECTION_NAME")
 				},
 			},
 			{
-				name:   "INTERNAL_AUTH_PUBLIC_KEY が欠けるとき、エラーになる",
+				name:   "INTERNAL_AUTH_PUBLIC_KEYが欠けるとき、エラーになる",
 				mutate: func(m map[string]string) { delete(m, "INTERNAL_AUTH_PUBLIC_KEY") },
 			},
 		}
@@ -129,7 +129,7 @@ func TestFromEnv(t *testing.T) {
 			})
 		}
 
-		t.Run("全 env が Config の各フィールドに反映される", func(t *testing.T) {
+		t.Run("全envがConfigの各フィールドに反映される", func(t *testing.T) {
 			m := map[string]string{
 				"ENV":                       "production",
 				"INTERNAL_PORT":             "12345",
@@ -151,7 +151,7 @@ func TestFromEnv(t *testing.T) {
 			assert.Equal(t, m["INTERNAL_AUTH_PUBLIC_KEY"], cfg.InternalAuthPublicKey)
 		})
 
-		t.Run("DATABASE_IAM_AUTH_ENABLED が false のとき、CLOUDSQL_CONNECTION_NAME が未設定でも成功する", func(t *testing.T) {
+		t.Run("DATABASE_IAM_AUTH_ENABLEDがfalseのとき、CLOUDSQL_CONNECTION_NAMEが未設定でも成功する", func(t *testing.T) {
 			m := validEnv()
 			applyEnv(t, m)
 
