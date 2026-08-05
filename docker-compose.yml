@@ -38,16 +38,16 @@ services:
       INTERNAL_PORT: "9008"
       DATABASE_CONN: host=postgres port=5432 dbname=news user=news password=news sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
-      # news は内部トークンの検証しか行わないため、ローカル専用に生成した公開鍵を置く。
+      # 対になる秘密鍵でトークンを発行するため、e2e のローカルスタックと同じ公開鍵を置く。
       INTERNAL_AUTH_PUBLIC_KEY: |
         -----BEGIN PUBLIC KEY-----
-        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzTzyrvfPNsxHXmA0OHrT
-        r9+8+gph5VZaEjg8C6DtjvnwizvjGJz5xwCusIMi2kjDQ84ls7lxskmEJTMOHb3N
-        yYHCEnx+ySduR4/9joQov3DctrMmAVcQVg8ldWxgz/jRJ6XjVSqx//AufvRaFQP2
-        aXxJ1ZklbNgXiSnQe+fHGKq/2sb2q7RRc+StdyUgEQZ0BhiksvGJXJGwiDSNyCAg
-        xUztw/YagvnTF6ngiP5FthHMAGtKhnqCzByanhyMuzEhzlWUMOtk/MLnnuRZyaBT
-        OrHkP/cOm+MTnXM2ljkZgo4X9gz7fJlLnZxYgWUTvTUG7oM3wO8czQ8tS1KTxBHZ
-        SwIDAQAB
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuLZaind+mEMdRYBq7ivA
+        Zo7nWFmIUYi3po4dGO6FKHo4o4ZDRBnqonBnSEeD0HOuq/95juP4D5VdrFcSjgBh
+        D8vzul2Z8+m+caZlljKs7mrOhzHj69zm78HHzHghG+iml2az0SD5LUBdNwMpRzFj
+        fxoY1Y32tCbfByhyQl2LbLHqIk8OfMCj4GlAu5e6Sfr4Dc5QOgsGd5mnGXBVCPYB
+        1guv3a8Fpwn57YrwWJDkVh3fIO35Lpubt5plD+ymEQ2kSvej7I7zWWs9e96u1Ch3
+        0Br61Jyp/TXNe473Xzkew7SkiiVviVz2hLJuszltyeSqYEEQ+Dilla27fz+rszbA
+        twIDAQAB
         -----END PUBLIC KEY-----
     volumes:
       - ./:/src
