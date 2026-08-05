@@ -41,13 +41,13 @@ services:
       # 対になる秘密鍵でトークンを発行するため、e2e のローカルスタックと同じ公開鍵を置く。
       INTERNAL_AUTH_PUBLIC_KEY: |
         -----BEGIN PUBLIC KEY-----
-        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuLZaind+mEMdRYBq7ivA
-        Zo7nWFmIUYi3po4dGO6FKHo4o4ZDRBnqonBnSEeD0HOuq/95juP4D5VdrFcSjgBh
-        D8vzul2Z8+m+caZlljKs7mrOhzHj69zm78HHzHghG+iml2az0SD5LUBdNwMpRzFj
-        fxoY1Y32tCbfByhyQl2LbLHqIk8OfMCj4GlAu5e6Sfr4Dc5QOgsGd5mnGXBVCPYB
-        1guv3a8Fpwn57YrwWJDkVh3fIO35Lpubt5plD+ymEQ2kSvej7I7zWWs9e96u1Ch3
-        0Br61Jyp/TXNe473Xzkew7SkiiVviVz2hLJuszltyeSqYEEQ+Dilla27fz+rszbA
-        twIDAQAB
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtonwE0LCBQAsbZk6fcso
+        ZOW3i3CohQfVQy3yn7gQV/Pv5roZWT2Ao45zhRqwZ8tv+mmZ8PbxU4NNQ9u2Orvq
+        /njIX/CdILUfYcGFg3eiQeuA/f8dqB1uE+OtbvZBZit4uBHwJl+47oVO7Ow7w4F1
+        GNoJuVnOB8ilY8rzB+HDgSJZgwycllxYoXl8pIACsbwqxPYY4YFnUf9lI1baAxao
+        Rf4daUKB8oe7ym2MwRtobvPZoB0lBeO/igeW4uqcdv5gDbF6OwTkiOdWBosl1HDA
+        0TK9+HtuniNd3M9kKyIWslxvpinn79eMAQfcnI9S1zuhh1vRuhMQ/u8WdAvM54AN
+        AQIDAQAB
         -----END PUBLIC KEY-----
     volumes:
       - ./:/src
