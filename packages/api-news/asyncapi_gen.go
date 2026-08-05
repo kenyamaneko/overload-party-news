@@ -25,4 +25,3 @@ type EventTranslation struct {
 	Summary string `json:"summary"`
 	Body    string `json:"body"`
 }
-
