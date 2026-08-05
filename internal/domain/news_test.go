@@ -21,24 +21,24 @@ func TestDeriveStatus(t *testing.T) {
 			want        domain.Status
 		}{
 			{
-				name:       "未校閲のとき、pending になる",
+				name:       "未校閲のとき、pendingになる",
 				reviewedAt: nil,
 				want:       domain.StatusPending,
 			},
 			{
-				name:        "reviewed_at = published_at のとき、published になる",
+				name:        "reviewed_at = published_atのとき、publishedになる",
 				reviewedAt:  &now,
 				publishedAt: &now,
 				want:        domain.StatusPublished,
 			},
 			{
-				name:        "published_at < reviewed_at のとき、rejected になる",
+				name:        "published_at < reviewed_atのとき、rejectedになる",
 				reviewedAt:  &now,
 				publishedAt: &earlier,
 				want:        domain.StatusRejected,
 			},
 			{
-				name:        "publish 経験なしで校閲済み (published_at が nil) のとき、rejected になる",
+				name:        "publish経験なしで校閲済み (published_atがnil)のとき、rejectedになる",
 				reviewedAt:  &now,
 				publishedAt: nil,
 				want:        domain.StatusRejected,

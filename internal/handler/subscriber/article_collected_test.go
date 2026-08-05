@@ -47,30 +47,30 @@ func TestHandle(t *testing.T) {
 			wantWriteCall int
 		}{
 			{
-				name:          "有効 payload で新規のとき、記事と翻訳が 1 回 INSERT され ACK される",
+				name:          "有効payloadで新規のとき、記事と翻訳が1回INSERTされACKされる",
 				payload:       validEventJSON(t),
 				writeResult:   true,
 				wantWriteCall: 1,
 			},
 			{
-				name:          "有効 payload で既に取り込み済みのとき、ACK される",
+				name:          "有効payloadで既に取り込み済みのとき、ACKされる",
 				payload:       validEventJSON(t),
 				writeResult:   false,
 				wantWriteCall: 1,
 			},
 			{
-				name:          "JSON 不正のとき、repo を呼ばず ACK される",
+				name:          "JSON不正のとき、repoを呼ばずACKされる",
 				payload:       []byte("{not-json"),
 				wantWriteCall: 0,
 			},
 			{
-				name:          "JSON が空のとき、repo を呼ばず ACK される",
+				name:          "JSONが空のとき、repoを呼ばずACKされる",
 				payload:       []byte(""),
 				wantWriteCall: 0,
 			},
 			// 必須フィールド欠けは usecase のバリデーションで ACK される。
 			{
-				name: "translations 空のとき、repo を呼ばず ACK される",
+				name: "translations空のとき、repoを呼ばずACKされる",
 				payload: func() []byte {
 					b, _ := json.Marshal(apinews.ArticleCollectedEvent{
 						ArticleID: "01", Source: "aws", SourceURL: "u",
@@ -80,17 +80,17 @@ func TestHandle(t *testing.T) {
 				wantWriteCall: 0,
 			},
 			{
-				name:          "article_id が 27 文字のとき、repo を呼ばず ACK される",
+				name:          "article_idが27文字のとき、repoを呼ばずACKされる",
 				payload:       eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
 				wantWriteCall: 0,
 			},
 			{
-				name:          "source が 21 文字のとき、repo を呼ばず ACK される",
+				name:          "sourceが21文字のとき、repoを呼ばずACKされる",
 				payload:       eventJSON(t, "01", "123456789012345678901"),
 				wantWriteCall: 0,
 			},
 			{
-				name: "lang が ja 以外のとき、repo を呼ばず ACK される",
+				name: "langがja以外のとき、repoを呼ばずACKされる",
 				payload: func() []byte {
 					b, _ := json.Marshal(apinews.ArticleCollectedEvent{
 						ArticleID: "01", Source: "aws", SourceURL: "u",
@@ -119,7 +119,7 @@ func TestHandle(t *testing.T) {
 			})
 		}
 
-		t.Run("INSERT で DB 障害のとき、NACK される (エラー伝播)", func(t *testing.T) {
+		t.Run("INSERTでDB障害のとき、NACKされる (エラー伝播)", func(t *testing.T) {
 			dbErr := errors.New("db connection lost")
 			var writeCalls int
 			repo := &port.MockNewsRepo{
@@ -142,12 +142,12 @@ func TestHandle(t *testing.T) {
 			wantReason string
 		}{
 			{
-				name:       "article_id が 27 文字のとき、article_id が上限を超えた旨がログに出る",
+				name:       "article_idが27文字のとき、article_idが上限を超えた旨がログに出る",
 				payload:    eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
 				wantReason: "article_id exceeds 26 characters (got 27)",
 			},
 			{
-				name:       "source が 21 文字のとき、source が上限を超えた旨がログに出る",
+				name:       "sourceが21文字のとき、sourceが上限を超えた旨がログに出る",
 				payload:    eventJSON(t, "01", "123456789012345678901"),
 				wantReason: "source exceeds 20 characters (got 21)",
 			},

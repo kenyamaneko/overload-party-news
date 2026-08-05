@@ -29,7 +29,7 @@ func newEngine(h *rest.NewsHandler) *gin.Engine {
 }
 
 func TestList(t *testing.T) {
-	t.Run("公開記事一覧 API", func(t *testing.T) {
+	t.Run("公開記事一覧API", func(t *testing.T) {
 		pub := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
 		successRows := []domain.PublishedArticleSummary{
 			{ArticleID: "01A", Source: "aws", Title: "T", Summary: "S", Tags: []string{"compute"}, PublishedAt: pub},
@@ -45,7 +45,7 @@ func TestList(t *testing.T) {
 			wantErrHas   string
 		}{
 			{
-				name:         "lang=ja + limit=10 で 0 件のとき、200 と空配列を返す",
+				name:         "lang=ja + limit=10で0件のとき、200と空配列を返す",
 				query:        "?lang=ja&limit=10",
 				repoReturn:   nil,
 				wantStatus:   http.StatusOK,
@@ -53,7 +53,7 @@ func TestList(t *testing.T) {
 				wantLang:     "ja",
 			},
 			{
-				name:         "lang=en + limit=10 で 1 件のとき、200 と当該記事を返す",
+				name:         "lang=en + limit=10で1件のとき、200と当該記事を返す",
 				query:        "?lang=en&limit=10",
 				repoReturn:   successRows,
 				wantStatus:   http.StatusOK,
@@ -61,43 +61,43 @@ func TestList(t *testing.T) {
 				wantLang:     "en",
 			},
 			{
-				name:       "lang 未指定のとき、400 + lang 必須のエラーメッセージを返す",
+				name:       "lang未指定のとき、400 + lang必須のエラーメッセージを返す",
 				query:      "?limit=10",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "lang is required",
 			},
 			{
-				name:       "limit 未指定のとき、400 + limit 不正のエラーメッセージを返す (デフォルト値へフォールバックしない)",
+				name:       "limit未指定のとき、400 + limit不正のエラーメッセージを返す (デフォルト値へフォールバックしない)",
 				query:      "?lang=ja",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "クエリ全未指定のとき、400 + limit 不正のエラーメッセージを返す",
+				name:       "クエリ全未指定のとき、400 + limit不正のエラーメッセージを返す",
 				query:      "",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "lang 対応外のとき、400 + lang 非対応のエラーメッセージを返す",
+				name:       "lang対応外のとき、400 + lang非対応のエラーメッセージを返す",
 				query:      "?lang=fr&limit=10",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "unsupported lang",
 			},
 			{
-				name:       "limit=0 のとき、400 + limit 不正のエラーメッセージを返す",
+				name:       "limit=0のとき、400 + limit不正のエラーメッセージを返す",
 				query:      "?lang=ja&limit=0",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "limit=101 (上限超過) のとき、400 + limit 不正のエラーメッセージを返す",
+				name:       "limit=101 (上限超過)のとき、400 + limit不正のエラーメッセージを返す",
 				query:      "?lang=ja&limit=101",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "invalid limit",
 			},
 			{
-				name:       "limit が非整数のとき、400 + limit 不正のエラーメッセージを返す",
+				name:       "limitが非整数のとき、400 + limit不正のエラーメッセージを返す",
 				query:      "?lang=ja&limit=abc",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "invalid limit",
@@ -138,7 +138,7 @@ func TestList(t *testing.T) {
 }
 
 func TestGetDetail(t *testing.T) {
-	t.Run("公開記事詳細 API", func(t *testing.T) {
+	t.Run("公開記事詳細API", func(t *testing.T) {
 		otherErr := errors.New("db lost")
 		pub := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 		successRow := &domain.PublishedArticleDetail{
@@ -165,7 +165,7 @@ func TestGetDetail(t *testing.T) {
 			wantErrHas string
 		}{
 			{
-				name:       "存在する記事のとき、body / source_url を含む JSON を返す",
+				name:       "存在する記事のとき、body / source_urlを含むJSONを返す",
 				query:      "?lang=ja",
 				repoReturn: successRow,
 				wantStatus: http.StatusOK,
@@ -173,7 +173,7 @@ func TestGetDetail(t *testing.T) {
 				wantLang:   "ja",
 			},
 			{
-				name:       "not found のとき、404 + 記事が見つからないエラーメッセージを返す",
+				name:       "not foundのとき、404 + 記事が見つからないエラーメッセージを返す",
 				query:      "?lang=ja",
 				repoErr:    port.ErrNotFound,
 				wantStatus: http.StatusNotFound,
@@ -181,7 +181,7 @@ func TestGetDetail(t *testing.T) {
 				wantErrHas: "article not found",
 			},
 			{
-				name:       "その他エラーのとき、500 + repo のエラーメッセージを返す",
+				name:       "その他エラーのとき、500 + repoのエラーメッセージを返す",
 				query:      "?lang=ja",
 				repoErr:    otherErr,
 				wantStatus: http.StatusInternalServerError,
@@ -189,13 +189,13 @@ func TestGetDetail(t *testing.T) {
 				wantErrHas: "db lost",
 			},
 			{
-				name:       "lang 未指定のとき、400 + lang 必須のエラーメッセージを返す",
+				name:       "lang未指定のとき、400 + lang必須のエラーメッセージを返す",
 				query:      "",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "lang is required",
 			},
 			{
-				name:       "lang 対応外のとき、400 + lang 非対応のエラーメッセージを返す",
+				name:       "lang対応外のとき、400 + lang非対応のエラーメッセージを返す",
 				query:      "?lang=fr",
 				wantStatus: http.StatusBadRequest,
 				wantErrHas: "unsupported lang",

@@ -160,8 +160,8 @@ func loadArticleWithTranslations(repo *postgres.NewsRepository, articleID string
 }
 
 func TestPushIngestE2E(t *testing.T) {
-	t.Run("push 受け口経由の記事取込パイプライン", func(t *testing.T) {
-		t.Run("有効な push を投げると、200 を返し記事と ja 翻訳が全フィールドで pending 永続化される", func(t *testing.T) {
+	t.Run("push受け口経由の記事取込パイプライン", func(t *testing.T) {
+		t.Run("有効なpushを投げると、200を返し記事とja翻訳が全フィールドでpending永続化される", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
@@ -184,7 +184,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Equal(t, "本文", aw.Translations[0].Body)
 		})
 
-		t.Run("同一イベントを push で2回投げても、200を2回返し翻訳は増えず created_at も変わらない", func(t *testing.T) {
+		t.Run("同一イベントをpushで2回投げても、200を2回返し翻訳は増えずcreated_atも変わらない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA2"
 			payload := validEventPayload(t, articleID)
@@ -205,7 +205,7 @@ func TestPushIngestE2E(t *testing.T) {
 				"重複 push で既存翻訳の created_at は変わらない")
 		})
 
-		t.Run("既存記事と同じ source_url を別の article_id で push すると、200 を返し記事も翻訳も増えない", func(t *testing.T) {
+		t.Run("既存記事と同じsource_urlを別のarticle_idでpushすると、200を返し記事も翻訳も増えない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			ctx := context.Background()
 			const sourceURL = "https://aws.amazon.com/blogs/aws/same-url"
@@ -229,7 +229,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Len(t, translations, 1)
 		})
 
-		t.Run("既存記事と同じ source_url を別の article_id で push しても、先に入った記事の翻訳は上書きされない", func(t *testing.T) {
+		t.Run("既存記事と同じsource_urlを別のarticle_idでpushしても、先に入った記事の翻訳は上書きされない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			const sourceURL = "https://aws.amazon.com/blogs/aws/keep-first"
 			firstID := "01ARZ3NDEKTSV4RRFFQ69G5FB3"
@@ -253,7 +253,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Equal(t, aw1.Translations[0].CreatedAt.UnixNano(), aw2.Translations[0].CreatedAt.UnixNano())
 		})
 
-		t.Run("DB へ接続できない状態で push すると 500 を返し、接続が戻ってから同じ記事を push し直すと 200 を返し永続化される", func(t *testing.T) {
+		t.Run("DBへ接続できない状態でpushすると500を返し、接続が戻ってから同じ記事をpushし直すと200を返し永続化される", func(t *testing.T) {
 			sharedPG.Truncate(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FB5"
 			payload := validEventPayload(t, articleID)
@@ -272,7 +272,7 @@ func TestPushIngestE2E(t *testing.T) {
 			require.Len(t, aw.Translations, 1)
 		})
 
-		t.Run("ja 以外の翻訳を含むイベントを push すると、200 を返し DB に永続化されない", func(t *testing.T) {
+		t.Run("ja以外の翻訳を含むイベントをpushすると、200を返しDBに永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA3"
 			data, err := json.Marshal(apinews.ArticleCollectedEvent{
@@ -292,7 +292,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Error(t, err, "invalid payload は DB に永続化されないべき")
 		})
 
-		t.Run("壊れた JSON イベントを push すると、200 を返し DB に永続化されない", func(t *testing.T) {
+		t.Run("壊れたJSONイベントをpushすると、200を返しDBに永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := doPush(t, r, []byte("{not-json"))
@@ -303,7 +303,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "壊れた JSON は DB に永続化されないべき")
 		})
 
-		t.Run("message.data が base64 として不正な push を投げると、400 を返し応答に復号不能の内容が含まれ DB に永続化されない", func(t *testing.T) {
+		t.Run("message.dataがbase64として不正なpushを投げると、400を返し応答に復号不能の内容が含まれDBに永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
@@ -317,7 +317,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "base64 復号不能な push は DB に永続化されないべき")
 		})
 
-		t.Run("push envelope の形式でない本文を投げると、400 を返し応答に envelope 不正の内容が含まれ DB に永続化されない", func(t *testing.T) {
+		t.Run("push envelopeの形式でない本文を投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
@@ -330,7 +330,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "envelope 不正な push は DB に永続化されないべき")
 		})
 
-		t.Run("message フィールドが無い push を投げると、400 を返し応答に envelope 不正の内容が含まれ DB に永続化されない", func(t *testing.T) {
+		t.Run("messageフィールドが無いpushを投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
@@ -343,7 +343,7 @@ func TestPushIngestE2E(t *testing.T) {
 			assert.Empty(t, items, "message フィールドが無い push は DB に永続化されないべき")
 		})
 
-		t.Run("message.data が空文字の push を投げると、400 を返し応答に envelope 不正の内容が含まれ DB に永続化されない", func(t *testing.T) {
+		t.Run("message.dataが空文字のpushを投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			w := httptest.NewRecorder()
@@ -362,17 +362,17 @@ func TestPushIngestE2E(t *testing.T) {
 			source    string
 		}{
 			{
-				name:      "article_id が 26 文字のとき、200 を返し記事が永続化される",
+				name:      "article_idが26文字のとき、200を返し記事が永続化される",
 				articleID: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
 				source:    "aws",
 			},
 			{
-				name:      "source が 20 文字のとき、200 を返し記事が永続化される",
+				name:      "sourceが20文字のとき、200を返し記事が永続化される",
 				articleID: "01ARZ3NDEKTSV4RRFFQ69G5FA5",
 				source:    "12345678901234567890",
 			},
 			{
-				name:      "article_id が全角 26 文字のとき、200 を返し記事が永続化される",
+				name:      "article_idが全角26文字のとき、200を返し記事が永続化される",
 				articleID: strings.Repeat("あ", 26),
 				source:    "aws",
 			},
@@ -398,12 +398,12 @@ func TestPushIngestE2E(t *testing.T) {
 			source    string
 		}{
 			{
-				name:      "article_id が 27 文字のとき、200 を返し DB に永続化されない",
+				name:      "article_idが27文字のとき、200を返しDBに永続化されない",
 				articleID: "ABCDEFGHIJKLMNOPQRSTUVWXYZ7",
 				source:    "aws",
 			},
 			{
-				name:      "source が 21 文字のとき、200 を返し DB に永続化されない",
+				name:      "sourceが21文字のとき、200を返しDBに永続化されない",
 				articleID: "01ARZ3NDEKTSV4RRFFQ69G5FA6",
 				source:    "123456789012345678901",
 			},
@@ -421,7 +421,7 @@ func TestPushIngestE2E(t *testing.T) {
 			})
 		}
 
-		t.Run("article_id が 27 文字の push で記事が捨てられた後、26 文字に直して push すると 200 を返し記事が永続化される", func(t *testing.T) {
+		t.Run("article_idが27文字のpushで記事が捨てられた後、26文字に直してpushすると200を返し記事が永続化される", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 
 			wTooLong := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7"))
@@ -436,7 +436,7 @@ func TestPushIngestE2E(t *testing.T) {
 			require.Len(t, aw.Translations, 1)
 		})
 
-		t.Run("envelope 不正な push で 400 になった後、同じ記事の有効な push を投げ直すと 200 を返し記事が永続化される", func(t *testing.T) {
+		t.Run("envelope不正なpushで400になった後、同じ記事の有効なpushを投げ直すと200を返し記事が永続化される", func(t *testing.T) {
 			r, repo := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA4"
 

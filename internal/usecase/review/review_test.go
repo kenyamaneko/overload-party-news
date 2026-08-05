@@ -59,7 +59,7 @@ func TestUpsertTranslation(t *testing.T) {
 			wantCall *upsertCall
 		}{
 			{
-				name:    "有効な値のとき、repo に articleID/lang/title/summary/body が渡る",
+				name:    "有効な値のとき、repoにarticleID/lang/title/summary/bodyが渡る",
 				title:   "a",
 				summary: "b",
 				body:    "c",
@@ -69,7 +69,7 @@ func TestUpsertTranslation(t *testing.T) {
 				},
 			},
 			{
-				name:    "title/summary が境界上限 (マルチバイト) のとき、repo にそのまま渡る",
+				name:    "title/summaryが境界上限 (マルチバイト)のとき、repoにそのまま渡る",
 				title:   strings.Repeat("あ", review.TitleMaxLen),
 				summary: strings.Repeat("い", review.SummaryMaxLen),
 				body:    "本文",
@@ -104,31 +104,31 @@ func TestUpsertTranslation(t *testing.T) {
 			body    string
 		}{
 			{
-				name:    "title が空のとき、ErrInvalidField になり repo に到達しない",
+				name:    "titleが空のとき、ErrInvalidFieldになりrepoに到達しない",
 				title:   "",
 				summary: "b",
 				body:    "c",
 			},
 			{
-				name:    "title が上限+1 のとき、ErrInvalidField になる",
+				name:    "titleが上限+1のとき、ErrInvalidFieldになる",
 				title:   strings.Repeat("a", review.TitleMaxLen+1),
 				summary: "b",
 				body:    "c",
 			},
 			{
-				name:    "summary が空のとき、ErrInvalidField になる",
+				name:    "summaryが空のとき、ErrInvalidFieldになる",
 				title:   "a",
 				summary: "",
 				body:    "c",
 			},
 			{
-				name:    "summary が上限+1 のとき、ErrInvalidField になる",
+				name:    "summaryが上限+1のとき、ErrInvalidFieldになる",
 				title:   "a",
 				summary: strings.Repeat("b", review.SummaryMaxLen+1),
 				body:    "c",
 			},
 			{
-				name:    "body が空のとき、ErrInvalidField になる",
+				name:    "bodyが空のとき、ErrInvalidFieldになる",
 				title:   "a",
 				summary: "b",
 				body:    "",
@@ -162,12 +162,12 @@ func TestPublish(t *testing.T) {
 			wantCall *reviewCall
 		}{
 			{
-				name:     "reviewer が有効のとき、repo に articleID/reviewer/now が渡る",
+				name:     "reviewerが有効のとき、repoにarticleID/reviewer/nowが渡る",
 				reviewer: "alice@example.com",
 				wantCall: &reviewCall{articleID: articleID, reviewer: "alice@example.com", now: fixedNow},
 			},
 			{
-				name:     "reviewer が空のとき、ErrInvalidField になり repo に到達しない",
+				name:     "reviewerが空のとき、ErrInvalidFieldになりrepoに到達しない",
 				reviewer: "",
 				wantErr:  review.ErrInvalidField,
 			},
@@ -202,17 +202,17 @@ func TestReject(t *testing.T) {
 			wantCall  *reviewCall
 		}{
 			{
-				name:     "reviewer が有効のとき、repo に articleID/reviewer/now が渡る",
+				name:     "reviewerが有効のとき、repoにarticleID/reviewer/nowが渡る",
 				reviewer: "alice@example.com",
 				wantCall: &reviewCall{articleID: articleID, reviewer: "alice@example.com", now: fixedNow},
 			},
 			{
-				name:     "reviewer が空のとき、ErrInvalidField になり repo に到達しない",
+				name:     "reviewerが空のとき、ErrInvalidFieldになりrepoに到達しない",
 				reviewer: "",
 				wantErr:  review.ErrInvalidField,
 			},
 			{
-				name:      "writer が失敗するとき、そのエラーが伝播し repo には articleID/reviewer/now が渡る",
+				name:      "writerが失敗するとき、そのエラーが伝播しrepoにはarticleID/reviewer/nowが渡る",
 				reviewer:  "alice@example.com",
 				writerErr: errReject,
 				wantErr:   errReject,
@@ -258,7 +258,7 @@ func TestList(t *testing.T) {
 			wantQueriedLimit *int     // nil 想定 = querier 未呼び出し
 		}{
 			{
-				name:             "limit 上限ちょうど (Max) のとき、その値が querier の取得件数に転送される",
+				name:             "limit上限ちょうど (Max)のとき、その値がquerierの取得件数に転送される",
 				articles:         threeArticles,
 				filter:           domain.Statuses,
 				limit:            review.AdminListLimitMax,
@@ -267,7 +267,7 @@ func TestList(t *testing.T) {
 				wantQueriedLimit: toIntPtr(review.AdminListLimitMax),
 			},
 			{
-				name:             "全 status 指定のとき、querier が返した記事を各 status を DeriveStatus で導出して全件返す",
+				name:             "全status指定のとき、querierが返した記事を各statusをDeriveStatusで導出して全件返す",
 				articles:         threeArticles,
 				filter:           domain.Statuses,
 				limit:            50,
@@ -276,7 +276,7 @@ func TestList(t *testing.T) {
 				wantQueriedLimit: toIntPtr(50),
 			},
 			{
-				name:             "pending のみ指定のとき、pending と導出される記事だけ返す",
+				name:             "pendingのみ指定のとき、pendingと導出される記事だけ返す",
 				articles:         threeArticles,
 				filter:           []domain.Status{domain.StatusPending},
 				limit:            50,
@@ -285,7 +285,7 @@ func TestList(t *testing.T) {
 				wantQueriedLimit: toIntPtr(50),
 			},
 			{
-				name:             "published+rejected を指定のとき、該当する 2 件だけ返す",
+				name:             "published+rejectedを指定のとき、該当する2件だけ返す",
 				articles:         threeArticles,
 				filter:           []domain.Status{domain.StatusPublished, domain.StatusRejected},
 				limit:            50,
@@ -294,7 +294,7 @@ func TestList(t *testing.T) {
 				wantQueriedLimit: toIntPtr(50),
 			},
 			{
-				name:             "該当 status が 0 件のとき、翻訳取得を呼ばずに空を返す",
+				name:             "該当statusが0件のとき、翻訳取得を呼ばずに空を返す",
 				articles:         []domain.Article{publishedArticle},
 				filter:           []domain.Status{domain.StatusPending},
 				limit:            50,
@@ -344,19 +344,19 @@ func TestList(t *testing.T) {
 			wantQueriedLimit *int     // nil 想定 = querier 未呼び出し
 		}{
 			{
-				name:    "limit=0 のとき、範囲 (0, Max] 違反で ErrInvalidField になり querier に到達しない",
+				name:    "limit=0のとき、範囲 (0, Max]違反でErrInvalidFieldになりquerierに到達しない",
 				limit:   0,
 				filter:  domain.Statuses,
 				wantErr: review.ErrInvalidField,
 			},
 			{
-				name:    "limit 負値のとき、範囲 (0, Max] 違反で ErrInvalidField になり querier に到達しない",
+				name:    "limit負値のとき、範囲 (0, Max]違反でErrInvalidFieldになりquerierに到達しない",
 				limit:   -1,
 				filter:  domain.Statuses,
 				wantErr: review.ErrInvalidField,
 			},
 			{
-				name:    "limit 上限超過 (Max+1) のとき、範囲 (0, Max] 違反で ErrInvalidField になり querier に到達しない",
+				name:    "limit上限超過 (Max+1)のとき、範囲 (0, Max]違反でErrInvalidFieldになりquerierに到達しない",
 				limit:   review.AdminListLimitMax + 1,
 				filter:  domain.Statuses,
 				wantErr: review.ErrInvalidField,
@@ -430,7 +430,7 @@ func TestList(t *testing.T) {
 			},
 		}
 
-		t.Run("2 記事に件数の異なる翻訳があるとき、各記事に自分の翻訳だけが結合されて返る", func(t *testing.T) {
+		t.Run("2記事に件数の異なる翻訳があるとき、各記事に自分の翻訳だけが結合されて返る", func(t *testing.T) {
 			got, err := newInteractor(repo).List(context.Background(), domain.Statuses, 50)
 			require.NoError(t, err)
 
@@ -464,7 +464,7 @@ func TestGet(t *testing.T) {
 				wantTransCalled: true,
 			},
 			{
-				name:            "記事が ErrNotFound のとき、翻訳取得を呼ばず ErrNotFound を返す",
+				name:            "記事がErrNotFoundのとき、翻訳取得を呼ばずErrNotFoundを返す",
 				articleErr:      port.ErrNotFound,
 				wantErr:         port.ErrNotFound,
 				want:            nil,

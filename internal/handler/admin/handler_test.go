@@ -125,47 +125,47 @@ func TestList(t *testing.T) {
 			wantRejBtn  bool
 		}{
 			{
-				name:       "status 未指定 + limit=50 のとき、200 になる",
+				name:       "status未指定 + limit=50のとき、200になる",
 				query:      "?limit=50",
 				wantStatus: http.StatusOK,
 			},
 			{
-				name:       "status=all + limit=50 のとき、200 になる",
+				name:       "status=all + limit=50のとき、200になる",
 				query:      "?status=all&limit=50",
 				wantStatus: http.StatusOK,
 			},
 			{
-				name:       "status=pending + limit=50 のとき、200 になる",
+				name:       "status=pending + limit=50のとき、200になる",
 				query:      "?status=pending&limit=50",
 				wantStatus: http.StatusOK,
 			},
 			{
-				name:       "status=published + limit=50 のとき、200 になる",
+				name:       "status=published + limit=50のとき、200になる",
 				query:      "?status=published&limit=50",
 				wantStatus: http.StatusOK,
 			},
 			{
-				name:       "status=rejected + limit=50 のとき、200 になる",
+				name:       "status=rejected + limit=50のとき、200になる",
 				query:      "?status=rejected&limit=50",
 				wantStatus: http.StatusOK,
 			},
 			{
-				name:       "limit 未指定のとき、400 になる (デフォルト値へフォールバックしない)",
+				name:       "limit未指定のとき、400になる (デフォルト値へフォールバックしない)",
 				query:      "?status=pending",
 				wantStatus: http.StatusBadRequest,
 			},
 			{
-				name:       "未知の status のとき、400 になる",
+				name:       "未知のstatusのとき、400になる",
 				query:      "?status=unknown&limit=50",
 				wantStatus: http.StatusBadRequest,
 			},
 			{
-				name:       "limit が非整数のとき、400 になる",
+				name:       "limitが非整数のとき、400になる",
 				query:      "?limit=xxx",
 				wantStatus: http.StatusBadRequest,
 			},
 			{
-				name:        "ja 翻訳ありのとき、ja タイトルが表示される",
+				name:        "ja翻訳ありのとき、jaタイトルが表示される",
 				query:       "?limit=50",
 				stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangJa, Title: "ja-title"}}}},
 				wantStatus:  http.StatusOK,
@@ -174,7 +174,7 @@ func TestList(t *testing.T) {
 				wantRejBtn:  true,
 			},
 			{
-				name:        "en 翻訳のみのとき、[ja 未作成] プレースホルダが表示される",
+				name:        "en翻訳のみのとき、[ja未作成]プレースホルダが表示される",
 				query:       "?limit=50",
 				stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending), Translations: []domain.Translation{{Lang: domain.LangEn, Title: "en-title"}}}},
 				wantStatus:  http.StatusOK,
@@ -183,7 +183,7 @@ func TestList(t *testing.T) {
 				wantRejBtn:  true,
 			},
 			{
-				name:        "翻訳なしのとき、[ja 未作成] プレースホルダが表示される",
+				name:        "翻訳なしのとき、[ja未作成]プレースホルダが表示される",
 				query:       "?limit=50",
 				stubItems:   []domain.ArticleWithTranslations{{Article: sampleArticle("01", domain.StatusPending)}},
 				wantStatus:  http.StatusOK,
@@ -192,7 +192,7 @@ func TestList(t *testing.T) {
 				wantRejBtn:  true,
 			},
 			{
-				name:       "pending 記事のとき、承認ボタンと却下ボタンが両方表示される",
+				name:       "pending記事のとき、承認ボタンと却下ボタンが両方表示される",
 				query:      "?limit=50",
 				stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusPending)},
 				wantStatus: http.StatusOK,
@@ -200,7 +200,7 @@ func TestList(t *testing.T) {
 				wantRejBtn: true,
 			},
 			{
-				name:       "published 記事のとき、却下ボタンのみ表示される",
+				name:       "published記事のとき、却下ボタンのみ表示される",
 				query:      "?limit=50",
 				stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusPublished)},
 				wantStatus: http.StatusOK,
@@ -208,7 +208,7 @@ func TestList(t *testing.T) {
 				wantRejBtn: true,
 			},
 			{
-				name:       "rejected 記事のとき、承認ボタンのみ表示される",
+				name:       "rejected記事のとき、承認ボタンのみ表示される",
 				query:      "?limit=50",
 				stubItems:  []domain.ArticleWithTranslations{sampleArticleWithJa("01", domain.StatusRejected)},
 				wantStatus: http.StatusOK,
@@ -216,7 +216,7 @@ func TestList(t *testing.T) {
 				wantRejBtn: false,
 			},
 			{
-				name:  "ja と en の翻訳がある記事のとき、一覧の言語欄に ja, en と表示される",
+				name:  "jaとenの翻訳がある記事のとき、一覧の言語欄にja, enと表示される",
 				query: "?limit=50",
 				stubItems: []domain.ArticleWithTranslations{{
 					Article: sampleArticle("01", domain.StatusPending),
@@ -231,7 +231,7 @@ func TestList(t *testing.T) {
 				wantRejBtn:  true,
 			},
 			{
-				name:       "記事一覧の取得が予期しないエラーになるとき、500 になる",
+				name:       "記事一覧の取得が予期しないエラーになるとき、500になる",
 				query:      "?limit=50",
 				listErr:    errListArticlesFailed,
 				wantStatus: http.StatusInternalServerError,
@@ -262,7 +262,7 @@ func TestList(t *testing.T) {
 		}
 	})
 
-	t.Run("status フィルタの絞り込みとタブ選択表示", func(t *testing.T) {
+	t.Run("statusフィルタの絞り込みとタブ選択表示", func(t *testing.T) {
 		stubItems := []domain.ArticleWithTranslations{
 			sampleArticleWithJa("01", domain.StatusPending),
 			sampleArticleWithJa("02", domain.StatusPublished),
@@ -277,14 +277,14 @@ func TestList(t *testing.T) {
 			wantRowCount   int
 		}{
 			{
-				name:           "pending/published/rejected が混在するとき、status=pending では pending 記事の行だけが表示される",
+				name:           "pending/published/rejectedが混在するとき、status=pendingではpending記事の行だけが表示される",
 				query:          "?status=pending&limit=50",
 				wantBodyHas:    []string{"ja-title-01"},
 				wantBodyNotHas: []string{"ja-title-02", "ja-title-03"},
 				wantRowCount:   1,
 			},
 			{
-				name:           "status=pending&status=published のとき、両 status の記事の行が表示される",
+				name:           "status=pending&status=publishedのとき、両statusの記事の行が表示される",
 				query:          "?status=pending&status=published&limit=50",
 				wantBodyHas:    []string{"ja-title-01", "ja-title-02"},
 				wantBodyNotHas: []string{"ja-title-03"},
@@ -317,17 +317,17 @@ func TestList(t *testing.T) {
 			wantBodyHas string
 		}{
 			{
-				name:        "status=pending のとき、pending タブが選択中として表示される",
+				name:        "status=pendingのとき、pendingタブが選択中として表示される",
 				query:       "?status=pending&limit=50",
 				wantBodyHas: `href="/admin/articles?status=pending" aria-current="page"`,
 			},
 			{
-				name:        "status 未指定のとき、all タブが選択中として表示される",
+				name:        "status未指定のとき、allタブが選択中として表示される",
 				query:       "?limit=50",
 				wantBodyHas: `href="/admin/articles" aria-current="page"`,
 			},
 			{
-				name:        "同じ status を重複指定したとき、重複が除かれ pending タブが選択中として表示される",
+				name:        "同じstatusを重複指定したとき、重複が除かれpendingタブが選択中として表示される",
 				query:       "?status=pending&status=pending&limit=50",
 				wantBodyHas: `href="/admin/articles?status=pending" aria-current="page"`,
 			},
@@ -359,17 +359,17 @@ func TestGetEdit(t *testing.T) {
 			wantBodyHas []string
 		}{
 			{
-				name:       "存在する記事のとき、200 になる",
+				name:       "存在する記事のとき、200になる",
 				repoReturn: &existing,
 				wantStatus: http.StatusOK,
 			},
 			{
-				name:       "存在しない記事のとき、404 になる",
+				name:       "存在しない記事のとき、404になる",
 				repoErr:    port.ErrNotFound,
 				wantStatus: http.StatusNotFound,
 			},
 			{
-				name: "ja のみ作成済みのとき、全言語タブと既存翻訳が埋め込まれる",
+				name: "jaのみ作成済みのとき、全言語タブと既存翻訳が埋め込まれる",
 				repoReturn: &domain.ArticleWithTranslations{
 					Article: sampleArticle("01", domain.StatusPending),
 					Translations: []domain.Translation{
@@ -387,13 +387,13 @@ func TestGetEdit(t *testing.T) {
 				},
 			},
 			{
-				name:        "ja 翻訳がある記事のとき、ページタイトルに ja タイトルが表示される",
+				name:        "ja翻訳がある記事のとき、ページタイトルにjaタイトルが表示される",
 				repoReturn:  &existing,
 				wantStatus:  http.StatusOK,
 				wantBodyHas: []string{"<title>News Admin — ja-title-01</title>"},
 			},
 			{
-				name: "ja 翻訳が無い記事 (en のみ) のとき、ページタイトルに記事 ID が表示される",
+				name: "ja翻訳が無い記事 (enのみ)のとき、ページタイトルに記事IDが表示される",
 				repoReturn: &domain.ArticleWithTranslations{
 					Article:      sampleArticle("01", domain.StatusPending),
 					Translations: []domain.Translation{{Lang: domain.LangEn, Title: "en-title"}},
@@ -442,7 +442,7 @@ func TestUpsertTranslation(t *testing.T) {
 			wantUpsert   upsertArgs
 		}{
 			{
-				name:         "HTMX リクエストで ja を登録すると、200 + HX-Redirect で編集画面へ誘導する",
+				name:         "HTMXリクエストでjaを登録すると、200 + HX-Redirectで編集画面へ誘導する",
 				lang:         "ja",
 				title:        "新タイトル",
 				summary:      "新要約",
@@ -453,7 +453,7 @@ func TestUpsertTranslation(t *testing.T) {
 				wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
 			},
 			{
-				name:         "非 HTMX リクエストで ja を登録すると、303 + Location で編集画面へ誘導する",
+				name:         "非HTMXリクエストでjaを登録すると、303 + Locationで編集画面へ誘導する",
 				lang:         "ja",
 				title:        "新タイトル",
 				summary:      "新要約",
@@ -463,7 +463,7 @@ func TestUpsertTranslation(t *testing.T) {
 				wantUpsert:   upsertArgs{articleID: "01", lang: "ja", title: "新タイトル", summary: "新要約", body: "新本文"},
 			},
 			{
-				name:         "HTMX リクエストで en を登録すると、200 + HX-Redirect で編集画面へ誘導する",
+				name:         "HTMXリクエストでenを登録すると、200 + HX-Redirectで編集画面へ誘導する",
 				lang:         "en",
 				title:        "t",
 				summary:      "s",
@@ -474,7 +474,7 @@ func TestUpsertTranslation(t *testing.T) {
 				wantUpsert:   upsertArgs{articleID: "01", lang: "en", title: "t", summary: "s", body: "b"},
 			},
 			{
-				name:         "title が空のとき、400 になる",
+				name:         "titleが空のとき、400になる",
 				lang:         "ja",
 				title:        "",
 				summary:      "s",
@@ -483,7 +483,7 @@ func TestUpsertTranslation(t *testing.T) {
 				wantStatus:   http.StatusBadRequest,
 			},
 			{
-				name:         "summary が空のとき、400 になる",
+				name:         "summaryが空のとき、400になる",
 				lang:         "ja",
 				title:        "t",
 				summary:      "",
@@ -492,7 +492,7 @@ func TestUpsertTranslation(t *testing.T) {
 				wantStatus:   http.StatusBadRequest,
 			},
 			{
-				name:         "body が空のとき、400 になる",
+				name:         "bodyが空のとき、400になる",
 				lang:         "ja",
 				title:        "t",
 				summary:      "s",
@@ -501,7 +501,7 @@ func TestUpsertTranslation(t *testing.T) {
 				wantStatus:   http.StatusBadRequest,
 			},
 			{
-				name:         "未対応 lang が DB CHECK 違反 (ErrInvalidPersistedValue) になるとき、400 になる",
+				name:         "未対応langがDB CHECK違反 (ErrInvalidPersistedValue)になるとき、400になる",
 				lang:         "fr",
 				title:        "t",
 				summary:      "s",
@@ -558,14 +558,14 @@ func TestPublish(t *testing.T) {
 			wantBodyEmpty bool
 		}{
 			{
-				name:        "HX-Target が row-{id} のとき、200 + 行フラグメントを返す",
+				name:        "HX-Targetがrow-{id} のとき、200 + 行フラグメントを返す",
 				path:        "/admin/articles/" + articleID + "/publish",
 				hxTarget:    "row-" + articleID,
 				wantStatus:  http.StatusOK,
 				wantBodyHas: `id="row-` + articleID + `"`,
 			},
 			{
-				name:          "HX-Target が row 以外のとき、HX-Redirect でリストへ誘導し本文は返さない",
+				name:          "HX-Targetがrow以外のとき、HX-Redirectでリストへ誘導し本文は返さない",
 				path:          "/admin/articles/" + articleID + "/publish",
 				hxTarget:      "body",
 				wantStatus:    http.StatusOK,
@@ -607,7 +607,7 @@ func TestPublish(t *testing.T) {
 
 func TestReject(t *testing.T) {
 	t.Run("記事の却下", func(t *testing.T) {
-		t.Run("HX-Target が row-01 のとき、200 で行フラグメントを返し rejected を含む", func(t *testing.T) {
+		t.Run("HX-Targetがrow-01のとき、200で行フラグメントを返しrejectedを含む", func(t *testing.T) {
 			repo := &port.MockNewsRepo{
 				RejectFn: func(_ context.Context, _ string, _ string, _ time.Time) error { return nil },
 			}
