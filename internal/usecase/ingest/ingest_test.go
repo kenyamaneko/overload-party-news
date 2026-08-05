@@ -47,6 +47,14 @@ func TestInsert(t *testing.T) {
 				name:   "tags が nil でも、INSERT される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Tags = nil },
 			},
+			{
+				name:   "article_id が 26 文字のとき、INSERT される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" },
+			},
+			{
+				name:   "source が 20 文字のとき、INSERT される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "12345678901234567890" },
+			},
 		}
 		for _, tc := range validCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -87,8 +95,16 @@ func TestInsert(t *testing.T) {
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "" },
 			},
 			{
+				name:   "article_id が 27 文字のとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "ABCDEFGHIJKLMNOPQRSTUVWXYZ7" },
+			},
+			{
 				name:   "source 欠けのとき、拒否される",
 				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "" },
+			},
+			{
+				name:   "source が 21 文字のとき、拒否される",
+				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "123456789012345678901" },
 			},
 			{
 				name:   "source_url 欠けのとき、拒否される",

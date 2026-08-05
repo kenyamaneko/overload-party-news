@@ -772,3 +772,48 @@ func TestUpsertTranslation(t *testing.T) {
 		}
 	})
 }
+
+func TestColumnWidthDrift(t *testing.T) {
+	t.Run("domain の最大文字数と適用済みスキーマの列幅の整合", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			table  string
+			column string
+			want   int
+		}{
+			{
+				name:   "記事 ID の最大文字数が news_articles.article_id の列幅と一致する",
+				table:  "news_articles",
+				column: "article_id",
+				want:   domain.MaxArticleIDLength,
+			},
+			{
+				name:   "記事 ID の最大文字数が news_article_translations.article_id の列幅と一致する",
+				table:  "news_article_translations",
+				column: "article_id",
+				want:   domain.MaxArticleIDLength,
+			},
+			{
+				name:   "ソース種別の最大文字数が news_articles.source の列幅と一致する",
+				table:  "news_articles",
+				column: "source",
+				want:   domain.MaxSourceLength,
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				var width int
+				err := sharedPG.Pool.QueryRow(context.Background(),
+					`SELECT character_maximum_length
+					   FROM information_schema.columns
+					  WHERE table_schema = 'news' AND table_name = $1 AND column_name = $2`,
+					tc.table, tc.column,
+				).Scan(&width)
+
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, width)
+			})
+		}
+	})
+}

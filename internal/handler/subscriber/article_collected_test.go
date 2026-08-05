@@ -1,9 +1,11 @@
 package subscriber_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,9 +20,14 @@ import (
 
 func validEventJSON(t *testing.T) []byte {
 	t.Helper()
+	return eventJSON(t, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "aws")
+}
+
+func eventJSON(t *testing.T, articleID, source string) []byte {
+	t.Helper()
 	data, err := json.Marshal(apinews.ArticleCollectedEvent{
-		ArticleID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-		Source:    "aws",
+		ArticleID: articleID,
+		Source:    source,
 		SourceURL: "https://aws.amazon.com/foo",
 		Tags:      []string{"compute"},
 		Translations: []apinews.EventTranslation{
@@ -75,6 +82,18 @@ func TestHandle(t *testing.T) {
 					})
 					return b
 				}(),
+				wantArticleCallCount: 0,
+				wantTransCallCount:   0,
+			},
+			{
+				name:                 "article_id が 27 文字のとき、repo を呼ばず ACK される",
+				payload:              eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
+				wantArticleCallCount: 0,
+				wantTransCallCount:   0,
+			},
+			{
+				name:                 "source が 21 文字のとき、repo を呼ばず ACK される",
+				payload:              eventJSON(t, "01", "123456789012345678901"),
 				wantArticleCallCount: 0,
 				wantTransCallCount:   0,
 			},
@@ -157,6 +176,45 @@ func TestHandle(t *testing.T) {
 				assert.ErrorIs(t, err, dbErr)
 				assert.Equal(t, tc.wantArticleCallCount, articleCalls)
 				assert.Equal(t, tc.wantTransCallCount, transCalls)
+			})
+		}
+
+		logCases := []struct {
+			name       string
+			payload    []byte
+			wantReason string
+		}{
+			{
+				name:       "article_id が 27 文字のとき、article_id が上限を超えた旨がログに出る",
+				payload:    eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
+				wantReason: "article_id exceeds 26 characters (got 27)",
+			},
+			{
+				name:       "source が 21 文字のとき、source が上限を超えた旨がログに出る",
+				payload:    eventJSON(t, "01", "123456789012345678901"),
+				wantReason: "source exceeds 20 characters (got 21)",
+			},
+		}
+		for _, tc := range logCases {
+			t.Run(tc.name, func(t *testing.T) {
+				var logged bytes.Buffer
+				prev := slog.Default()
+				slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+				t.Cleanup(func() { slog.SetDefault(prev) })
+				repo := &port.MockNewsRepo{
+					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
+						return true, nil
+					},
+					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
+						return nil
+					},
+				}
+				h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
+
+				err := h.Handle(context.Background(), tc.payload)
+
+				assert.NoError(t, err)
+				assert.Contains(t, logged.String(), tc.wantReason)
 			})
 		}
 	})

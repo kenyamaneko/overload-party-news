@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
@@ -12,7 +13,7 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// ErrInvalidEventPayload は必須フィールド欠けに対するセンチネル。
+// ErrInvalidEventPayload は再送しても永続化できない payload に対するセンチネル。
 // subscriber は deterministic error として ACK する (再送しても結果が変わらない)。
 var ErrInvalidEventPayload = errors.New("invalid event payload")
 
@@ -28,7 +29,7 @@ func New(writer port.NewsIngestWriter) *Interactor {
 
 // Insert はイベントを変換して記事と ja 翻訳を INSERT する。
 // 戻り値 inserted は「記事行が新規に入ったか」(翻訳の有無は含めない)。
-// 必須フィールド欠落・ja 以外の lang・translations 不正は ErrInvalidEventPayload。
+// 必須フィールド欠落・ja 以外の lang・translations 不正・列幅超過は ErrInvalidEventPayload。
 func (uc *Interactor) Insert(ctx context.Context, event apinews.ArticleCollectedEvent) (inserted bool, err error) {
 	if err := validateEvent(event); err != nil {
 		return false, err
@@ -46,13 +47,19 @@ func (uc *Interactor) Insert(ctx context.Context, event apinews.ArticleCollected
 	return inserted, nil
 }
 
-// validateEvent は必須フィールドが揃い translations が ja 1 件ちょうどであることを確認する。
+// validateEvent は必須フィールドが揃い、列幅に収まり、translations が ja 1 件ちょうどであることを確認する。
 func validateEvent(e apinews.ArticleCollectedEvent) error {
 	if e.ArticleID == "" {
 		return fmt.Errorf("%w: article_id is empty", ErrInvalidEventPayload)
 	}
+	if n := utf8.RuneCountInString(e.ArticleID); n > domain.MaxArticleIDLength {
+		return fmt.Errorf("%w: article_id exceeds %d characters (got %d)", ErrInvalidEventPayload, domain.MaxArticleIDLength, n)
+	}
 	if e.Source == "" {
 		return fmt.Errorf("%w: source is empty", ErrInvalidEventPayload)
+	}
+	if n := utf8.RuneCountInString(e.Source); n > domain.MaxSourceLength {
+		return fmt.Errorf("%w: source exceeds %d characters (got %d)", ErrInvalidEventPayload, domain.MaxSourceLength, n)
 	}
 	if e.SourceURL == "" {
 		return fmt.Errorf("%w: source_url is empty", ErrInvalidEventPayload)
