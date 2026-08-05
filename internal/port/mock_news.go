@@ -15,8 +15,7 @@ type MockNewsRepo struct {
 	ListArticlesFn                 func(ctx context.Context, limit int) ([]domain.Article, error)
 	GetArticleByIDFn               func(ctx context.Context, articleID string) (*domain.Article, error)
 	ListTranslationsByArticleIDsFn func(ctx context.Context, articleIDs []string) ([]domain.Translation, error)
-	InsertArticleFn                func(ctx context.Context, article domain.Article) (bool, error)
-	InsertTranslationFn            func(ctx context.Context, articleID string, lang, title, summary, body string) error
+	InsertArticleWithTranslationFn func(ctx context.Context, article domain.Article, lang, title, summary, body string) (bool, error)
 	PublishFn                      func(ctx context.Context, articleID string, reviewer string, now time.Time) error
 	RejectFn                       func(ctx context.Context, articleID string, reviewer string, now time.Time) error
 	UpsertTranslationFn            func(ctx context.Context, articleID string, lang, title, summary, body string) error
@@ -64,18 +63,11 @@ func (m *MockNewsRepo) ListTranslationsByArticleIDs(ctx context.Context, article
 	return m.ListTranslationsByArticleIDsFn(ctx, articleIDs)
 }
 
-func (m *MockNewsRepo) InsertArticle(ctx context.Context, article domain.Article) (bool, error) {
-	if m.InsertArticleFn == nil {
-		panic("MockNewsRepo.InsertArticle called without Fn")
+func (m *MockNewsRepo) InsertArticleWithTranslation(ctx context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+	if m.InsertArticleWithTranslationFn == nil {
+		panic("MockNewsRepo.InsertArticleWithTranslation called without Fn")
 	}
-	return m.InsertArticleFn(ctx, article)
-}
-
-func (m *MockNewsRepo) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
-	if m.InsertTranslationFn == nil {
-		panic("MockNewsRepo.InsertTranslation called without Fn")
-	}
-	return m.InsertTranslationFn(ctx, articleID, lang, title, summary, body)
+	return m.InsertArticleWithTranslationFn(ctx, article, lang, title, summary, body)
 }
 
 func (m *MockNewsRepo) Publish(ctx context.Context, articleID string, reviewer string, now time.Time) error {

@@ -29,10 +29,9 @@ type AdminNewsQuerier interface {
 
 // NewsIngestWriter は Pub/Sub subscriber が記事と翻訳を永続化するための write 操作。
 type NewsIngestWriter interface {
-	// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
-	InsertArticle(ctx context.Context, article domain.Article) (inserted bool, err error)
-	// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
-	InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error
+	// InsertArticleWithTranslation は記事行と翻訳行を不可分に挿入する。
+	// 記事が既に取り込み済み (同一 article_id、または同一 source_url の別 article_id) なら inserted=false で何も挿入しない。
+	InsertArticleWithTranslation(ctx context.Context, article domain.Article, lang, title, summary, body string) (inserted bool, err error)
 }
 
 // NewsReviewWriter は校閲ユースケース (承認・却下・翻訳 upsert) の write 操作。

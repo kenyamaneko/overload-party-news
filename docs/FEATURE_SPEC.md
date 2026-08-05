@@ -90,8 +90,8 @@ status は記事レベル（言語横断）であり、翻訳行ごとには持�
 
 ```
 Pub/Sub event (ja translation)
-  └─ InsertArticle (status=pending)  ─┐  独立した冪等操作
-     InsertTranslation (lang=ja)     ─┘  (tx なし、再配送で収束)
+  └─ 記事 (status=pending) + ja 翻訳  ─── 1 トランザクションで INSERT
+                                          (取込済みなら何も挿入せず ACK)
         │
         ▼ 管理 UI (§6 / §7)
         ├─ 翻訳編集 (ja / en) → 該当行のみ upsert、status 変更なし
@@ -112,9 +112,9 @@ news サービスは未知の `status` 値を **非公開として扱う**。将
 
 ## 3. 記事インジェスト
 
-news は `news-article-collected` トピックを購読し、受信メッセージごとに `news_articles` 1 行 + `news_article_translations` の **ja 翻訳 1 行** を独立した冪等操作として INSERT する（トランザクションは張らない）。
+news は `news-article-collected` トピックを購読し、受信メッセージごとに `news_articles` 1 行 + `news_article_translations` の **ja 翻訳 1 行** を 1 トランザクションで INSERT する。
 
-`InsertArticle` と `InsertTranslation` は独立した冪等操作であり、片方が失敗した中間状態（記事だけ入って翻訳なし）は Pub/Sub の再配送で収束する。管理 UI は ja 翻訳が未作成の記事を `[ja 未作成]` で描画するため、中間状態は運用上も可観測。
+記事行が既にあるイベントは取込済みとして何も挿入せず ACK する。記事だけ入って翻訳が無い中間状態は生じない。
 
 ### 3.1 購読イベントのペイロード
 
@@ -142,17 +142,14 @@ en 翻訳は管理 UI 経由で手動追加する（§6.3）。これは「AI �
 
 ### 3.2 冪等性
 
-同一イベントが複数回配送されても DB 行は重複しない:
+同一イベントが複数回配送されても、同じ `source_url` が別の `article_id` で届いても DB 行は重複しない:
 
 1. **article_id**: PK による UNIQUE
-2. **source_url**: UNIQUE（article_id 再採番事故に対する二次防御）
-3. **(article_id, lang)**: translations の PK
+2. **source_url**: UNIQUE（newsfeed が取り直して採番し直した記事を弾く）
 
-記事・翻訳ともに INSERT 時:
-- `news_articles` に `ON CONFLICT DO NOTHING`
-- `news_article_translations` に `ON CONFLICT (article_id, lang) DO NOTHING`
+`news_articles` への INSERT は `ON CONFLICT DO NOTHING` で、上記どちらの衝突も no-op になる。1 行も入らなかったイベントは取込済みとして翻訳を挿入せず ACK する。
 
-**校閲後の翻訳を newsfeed の再送で上書きしない** 契約を維持する（再送で ja が既に存在すれば DO NOTHING）。記事 INSERT と翻訳 INSERT はトランザクションでまとめない。subscriber は両方を順に呼び、どちらかが失敗したら NACK → Pub/Sub が再配送する。
+**校閲後の翻訳を newsfeed の再送で上書きしない** 契約を維持する。トランザクションの途中で失敗した場合は記事行ごと巻き戻し、NACK → Pub/Sub が再配送する。
 
 ### 3.3 インジェスト時の初期値
 

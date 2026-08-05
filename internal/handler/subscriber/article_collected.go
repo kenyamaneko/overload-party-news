@@ -46,7 +46,8 @@ func (h *ArticleCollectedHandler) Handle(ctx context.Context, data []byte) error
 	if inserted {
 		slog.InfoContext(ctx, "article-collected: inserted", "article_id", event.ArticleID)
 	} else {
-		slog.DebugContext(ctx, "article-collected: duplicate, no-op", "article_id", event.ArticleID)
+		slog.DebugContext(ctx, "article-collected: already ingested, no-op",
+			"article_id", event.ArticleID, "source_url", event.SourceURL)
 	}
 	return nil
 }

@@ -32,15 +32,14 @@ type seedSpec struct {
 // seedArticleAt は指定 status の記事を 1 件作り、その ingested_at を ingestedAt にピン留めする。
 func seedArticleAt(t *testing.T, ctx context.Context, pg *postgrestest.Postgres, repo *postgres.NewsRepository, id string, status domain.Status, ingestedAt time.Time) {
 	t.Helper()
-	_, err := repo.InsertArticle(ctx, domain.Article{
+	_, err := repo.InsertArticleWithTranslation(ctx, domain.Article{
 		ArticleID: id,
 		Source:    domain.SourceAws,
 		SourceURL: "https://example.com/" + id,
 		Tags:      []string{},
 		Status:    domain.StatusPending,
-	})
+	}, domain.LangJa, "ja-"+id, "s-"+id, "b-"+id)
 	require.NoError(t, err)
-	require.NoError(t, repo.InsertTranslation(ctx, id, domain.LangJa, "ja-"+id, "s-"+id, "b-"+id))
 
 	switch status {
 	case domain.StatusPending:
