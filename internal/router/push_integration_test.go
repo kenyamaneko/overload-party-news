@@ -91,10 +91,15 @@ func doPush(t *testing.T, r *gin.Engine, payload []byte) *httptest.ResponseRecor
 
 func validEventPayload(t *testing.T, articleID string) []byte {
 	t.Helper()
+	return eventPayload(t, articleID, "aws")
+}
+
+func eventPayload(t *testing.T, articleID, source string) []byte {
+	t.Helper()
 	pub := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
 	data, err := json.Marshal(apinews.ArticleCollectedEvent{
 		ArticleID:         articleID,
-		Source:            "aws",
+		Source:            source,
 		SourceURL:         "https://aws.amazon.com/" + articleID,
 		Tags:              []string{"compute"},
 		SourcePublishedAt: &pub,
@@ -249,6 +254,86 @@ func TestPushIngestE2E(t *testing.T) {
 			items, err := repo.ListArticles(context.Background(), 10)
 			require.NoError(t, err)
 			assert.Empty(t, items, "message.data が空文字の push は DB に永続化されないべき")
+		})
+
+		storedCases := []struct {
+			name      string
+			articleID string
+			source    string
+		}{
+			{
+				name:      "article_id が 26 文字のとき、200 を返し記事が永続化される",
+				articleID: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+				source:    "aws",
+			},
+			{
+				name:      "source が 20 文字のとき、200 を返し記事が永続化される",
+				articleID: "01ARZ3NDEKTSV4RRFFQ69G5FA5",
+				source:    "12345678901234567890",
+			},
+			{
+				name:      "article_id が全角 26 文字のとき、200 を返し記事が永続化される",
+				articleID: strings.Repeat("あ", 26),
+				source:    "aws",
+			},
+		}
+		for _, tc := range storedCases {
+			t.Run(tc.name, func(t *testing.T) {
+				r, repo := newTestRouter(t)
+
+				w := doPush(t, r, eventPayload(t, tc.articleID, tc.source))
+				assert.Equal(t, http.StatusOK, w.Code)
+
+				aw, err := loadArticleWithTranslations(repo, tc.articleID)
+				require.NoError(t, err)
+				assert.Equal(t, tc.articleID, aw.Article.ArticleID)
+				assert.Equal(t, tc.source, aw.Article.Source)
+				require.Len(t, aw.Translations, 1)
+			})
+		}
+
+		discardedCases := []struct {
+			name      string
+			articleID string
+			source    string
+		}{
+			{
+				name:      "article_id が 27 文字のとき、200 を返し DB に永続化されない",
+				articleID: "ABCDEFGHIJKLMNOPQRSTUVWXYZ7",
+				source:    "aws",
+			},
+			{
+				name:      "source が 21 文字のとき、200 を返し DB に永続化されない",
+				articleID: "01ARZ3NDEKTSV4RRFFQ69G5FA6",
+				source:    "123456789012345678901",
+			},
+		}
+		for _, tc := range discardedCases {
+			t.Run(tc.name, func(t *testing.T) {
+				r, repo := newTestRouter(t)
+
+				w := doPush(t, r, eventPayload(t, tc.articleID, tc.source))
+				assert.Equal(t, http.StatusOK, w.Code)
+
+				items, err := repo.ListArticles(context.Background(), 10)
+				require.NoError(t, err)
+				assert.Empty(t, items)
+			})
+		}
+
+		t.Run("article_id が 27 文字の push で記事が捨てられた後、26 文字に直して push すると 200 を返し記事が永続化される", func(t *testing.T) {
+			r, repo := newTestRouter(t)
+
+			wTooLong := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7"))
+			require.Equal(t, http.StatusOK, wTooLong.Code)
+
+			wRetry := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+			assert.Equal(t, http.StatusOK, wRetry.Code)
+
+			aw, err := loadArticleWithTranslations(repo, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			require.NoError(t, err)
+			assert.Equal(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", aw.Article.ArticleID)
+			require.Len(t, aw.Translations, 1)
 		})
 
 		t.Run("envelope 不正な push で 400 になった後、同じ記事の有効な push を投げ直すと 200 を返し記事が永続化される", func(t *testing.T) {

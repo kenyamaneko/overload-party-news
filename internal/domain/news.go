@@ -51,6 +51,13 @@ const (
 // Sources は対応 Source 値の列挙。
 var Sources = []string{SourceAws, SourceGoogleCloud, SourceAzure, SourceOci, SourceOther}
 
+// 可変長列に格納できる最大文字数。db/schema.sql の VARCHAR 定義と同期して保つ
+// (drift は repository の列幅テストで固定する)。
+const (
+	MaxArticleIDLength = 26
+	MaxSourceLength    = 20
+)
+
 // Article は news_articles 行の言語非依存部分を表すドメインエンティティ。
 type Article struct {
 	ArticleID         string
