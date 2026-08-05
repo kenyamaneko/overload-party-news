@@ -15,6 +15,12 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
+// writtenArticle は writer に渡された記事と翻訳の組。
+type writtenArticle struct {
+	article                    domain.Article
+	lang, title, summary, body string
+}
+
 func validEvent() apinews.ArticleCollectedEvent {
 	pub := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
 	return apinews.ArticleCollectedEvent{
@@ -58,15 +64,11 @@ func TestInsert(t *testing.T) {
 		}
 		for _, tc := range validCases {
 			t.Run(tc.name, func(t *testing.T) {
-				var articleCalls, transCalls int
+				var writes []writtenArticle
 				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-						articleCalls++
+					InsertArticleWithTranslationFn: func(_ context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+						writes = append(writes, writtenArticle{article, lang, title, summary, body})
 						return true, nil
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						transCalls++
-						return nil
 					},
 				}
 				event := validEvent()
@@ -75,8 +77,13 @@ func TestInsert(t *testing.T) {
 				_, err := ingest.New(repo).Insert(context.Background(), event)
 
 				require.NoError(t, err)
-				assert.Equal(t, 1, articleCalls)
-				assert.Equal(t, 1, transCalls)
+				require.Len(t, writes, 1)
+				assert.Equal(t, event.ArticleID, writes[0].article.ArticleID)
+				assert.Equal(t, event.SourceURL, writes[0].article.SourceURL)
+				assert.Equal(t, domain.LangJa, writes[0].lang)
+				assert.Equal(t, "タイトル", writes[0].title)
+				assert.Equal(t, "要約", writes[0].summary)
+				assert.Equal(t, "本文", writes[0].body)
 			})
 		}
 
@@ -137,15 +144,11 @@ func TestInsert(t *testing.T) {
 		}
 		for _, tc := range invalidCases {
 			t.Run(tc.name, func(t *testing.T) {
-				var articleCalls, transCalls int
+				var writeCalls int
 				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-						articleCalls++
+					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
+						writeCalls++
 						return true, nil
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						transCalls++
-						return nil
 					},
 				}
 				event := validEvent()
@@ -154,36 +157,31 @@ func TestInsert(t *testing.T) {
 				_, err := ingest.New(repo).Insert(context.Background(), event)
 
 				assert.ErrorIs(t, err, ingest.ErrInvalidEventPayload)
-				assert.Equal(t, 0, articleCalls)
-				assert.Equal(t, 0, transCalls)
+				assert.Equal(t, 0, writeCalls)
 			})
 		}
 
-		dbErr := errors.New("db lost")
 		propagationValidCases := []struct {
-			name          string
-			articleResult bool
-			wantInserted  bool
+			name         string
+			writeResult  bool
+			wantInserted bool
 		}{
 			{
-				name:          "記事が新規挿入のとき、inserted=true を返す",
-				articleResult: true,
-				wantInserted:  true,
+				name:         "記事が新規挿入のとき、inserted=true を返す",
+				writeResult:  true,
+				wantInserted: true,
 			},
 			{
-				name:          "記事が重複 (記事・翻訳とも既存) のとき、inserted=false を返す",
-				articleResult: false,
-				wantInserted:  false,
+				name:         "記事が既に取り込み済みのとき、inserted=false を返す",
+				writeResult:  false,
+				wantInserted: false,
 			},
 		}
 		for _, tc := range propagationValidCases {
 			t.Run(tc.name, func(t *testing.T) {
 				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-						return tc.articleResult, nil
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						return nil
+					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
+						return tc.writeResult, nil
 					},
 				}
 
@@ -194,38 +192,18 @@ func TestInsert(t *testing.T) {
 			})
 		}
 
-		propagationErrorCases := []struct {
-			name          string
-			articleResult bool
-			articleErr    error
-			transErr      error
-		}{
-			{
-				name:       "記事 INSERT で DB 障害のとき、そのエラーが伝播する",
-				articleErr: dbErr,
-			},
-			{
-				name:          "翻訳 INSERT で DB 障害のとき、そのエラーが伝播する",
-				articleResult: true,
-				transErr:      dbErr,
-			},
-		}
-		for _, tc := range propagationErrorCases {
-			t.Run(tc.name, func(t *testing.T) {
-				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-						return tc.articleResult, tc.articleErr
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						return tc.transErr
-					},
-				}
+		t.Run("INSERT で DB 障害のとき、そのエラーが伝播する", func(t *testing.T) {
+			dbErr := errors.New("db lost")
+			repo := &port.MockNewsRepo{
+				InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
+					return false, dbErr
+				},
+			}
 
-				inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
+			inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
 
-				assert.ErrorIs(t, err, dbErr)
-				assert.False(t, inserted)
-			})
-		}
+			assert.ErrorIs(t, err, dbErr)
+			assert.False(t, inserted)
+		})
 	})
 }

@@ -41,37 +41,32 @@ func eventJSON(t *testing.T, articleID, source string) []byte {
 func TestHandle(t *testing.T) {
 	t.Run("記事収集イベントの処理", func(t *testing.T) {
 		ackCases := []struct {
-			name                 string
-			payload              []byte
-			articleInserted      bool
-			wantArticleCallCount int
-			wantTransCallCount   int
+			name          string
+			payload       []byte
+			writeResult   bool
+			wantWriteCall int
 		}{
 			{
-				name:                 "有効 payload で新規のとき、記事と翻訳が 1 回ずつ INSERT され ACK される",
-				payload:              validEventJSON(t),
-				articleInserted:      true,
-				wantArticleCallCount: 1,
-				wantTransCallCount:   1,
+				name:          "有効 payload で新規のとき、記事と翻訳が 1 回 INSERT され ACK される",
+				payload:       validEventJSON(t),
+				writeResult:   true,
+				wantWriteCall: 1,
 			},
 			{
-				name:                 "有効 payload で重複のとき、ACK される",
-				payload:              validEventJSON(t),
-				articleInserted:      false,
-				wantArticleCallCount: 1,
-				wantTransCallCount:   1,
+				name:          "有効 payload で既に取り込み済みのとき、ACK される",
+				payload:       validEventJSON(t),
+				writeResult:   false,
+				wantWriteCall: 1,
 			},
 			{
-				name:                 "JSON 不正のとき、repo を呼ばず ACK される",
-				payload:              []byte("{not-json"),
-				wantArticleCallCount: 0,
-				wantTransCallCount:   0,
+				name:          "JSON 不正のとき、repo を呼ばず ACK される",
+				payload:       []byte("{not-json"),
+				wantWriteCall: 0,
 			},
 			{
-				name:                 "JSON が空のとき、repo を呼ばず ACK される",
-				payload:              []byte(""),
-				wantArticleCallCount: 0,
-				wantTransCallCount:   0,
+				name:          "JSON が空のとき、repo を呼ばず ACK される",
+				payload:       []byte(""),
+				wantWriteCall: 0,
 			},
 			// 必須フィールド欠けは usecase のバリデーションで ACK される。
 			{
@@ -82,20 +77,17 @@ func TestHandle(t *testing.T) {
 					})
 					return b
 				}(),
-				wantArticleCallCount: 0,
-				wantTransCallCount:   0,
+				wantWriteCall: 0,
 			},
 			{
-				name:                 "article_id が 27 文字のとき、repo を呼ばず ACK される",
-				payload:              eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
-				wantArticleCallCount: 0,
-				wantTransCallCount:   0,
+				name:          "article_id が 27 文字のとき、repo を呼ばず ACK される",
+				payload:       eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
+				wantWriteCall: 0,
 			},
 			{
-				name:                 "source が 21 文字のとき、repo を呼ばず ACK される",
-				payload:              eventJSON(t, "01", "123456789012345678901"),
-				wantArticleCallCount: 0,
-				wantTransCallCount:   0,
+				name:          "source が 21 文字のとき、repo を呼ばず ACK される",
+				payload:       eventJSON(t, "01", "123456789012345678901"),
+				wantWriteCall: 0,
 			},
 			{
 				name: "lang が ja 以外のとき、repo を呼ばず ACK される",
@@ -106,21 +98,16 @@ func TestHandle(t *testing.T) {
 					})
 					return b
 				}(),
-				wantArticleCallCount: 0,
-				wantTransCallCount:   0,
+				wantWriteCall: 0,
 			},
 		}
 		for _, tc := range ackCases {
 			t.Run(tc.name, func(t *testing.T) {
-				var articleCalls, transCalls int
+				var writeCalls int
 				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-						articleCalls++
-						return tc.articleInserted, nil
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						transCalls++
-						return nil
+					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
+						writeCalls++
+						return tc.writeResult, nil
 					},
 				}
 				h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
@@ -128,56 +115,26 @@ func TestHandle(t *testing.T) {
 				err := h.Handle(context.Background(), tc.payload)
 
 				assert.NoError(t, err)
-				assert.Equal(t, tc.wantArticleCallCount, articleCalls)
-				assert.Equal(t, tc.wantTransCallCount, transCalls)
+				assert.Equal(t, tc.wantWriteCall, writeCalls)
 			})
 		}
 
-		dbErr := errors.New("db connection lost")
-		nackCases := []struct {
-			name                 string
-			articleInserted      bool
-			articleErr           error
-			transErr             error
-			wantArticleCallCount int
-			wantTransCallCount   int
-		}{
-			{
-				name:                 "記事 INSERT で DB 障害のとき、NACK される (エラー伝播)",
-				articleErr:           dbErr,
-				wantArticleCallCount: 1,
-				wantTransCallCount:   0,
-			},
-			{
-				name:                 "翻訳 INSERT で DB 障害のとき、NACK される (エラー伝播)",
-				articleInserted:      true,
-				transErr:             dbErr,
-				wantArticleCallCount: 1,
-				wantTransCallCount:   1,
-			},
-		}
-		for _, tc := range nackCases {
-			t.Run(tc.name, func(t *testing.T) {
-				var articleCalls, transCalls int
-				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
-						articleCalls++
-						return tc.articleInserted, tc.articleErr
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						transCalls++
-						return tc.transErr
-					},
-				}
-				h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
+		t.Run("INSERT で DB 障害のとき、NACK される (エラー伝播)", func(t *testing.T) {
+			dbErr := errors.New("db connection lost")
+			var writeCalls int
+			repo := &port.MockNewsRepo{
+				InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
+					writeCalls++
+					return false, dbErr
+				},
+			}
+			h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
 
-				err := h.Handle(context.Background(), validEventJSON(t))
+			err := h.Handle(context.Background(), validEventJSON(t))
 
-				assert.ErrorIs(t, err, dbErr)
-				assert.Equal(t, tc.wantArticleCallCount, articleCalls)
-				assert.Equal(t, tc.wantTransCallCount, transCalls)
-			})
-		}
+			assert.ErrorIs(t, err, dbErr)
+			assert.Equal(t, 1, writeCalls)
+		})
 
 		logCases := []struct {
 			name       string
@@ -202,11 +159,8 @@ func TestHandle(t *testing.T) {
 				slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
 				t.Cleanup(func() { slog.SetDefault(prev) })
 				repo := &port.MockNewsRepo{
-					InsertArticleFn: func(_ context.Context, _ domain.Article) (bool, error) {
+					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
 						return true, nil
-					},
-					InsertTranslationFn: func(_ context.Context, _, _, _, _, _ string) error {
-						return nil
 					},
 				}
 				h := subscriber.NewArticleCollectedHandler(ingest.New(repo))

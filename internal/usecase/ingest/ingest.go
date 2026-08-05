@@ -28,23 +28,17 @@ func New(writer port.NewsIngestWriter) *Interactor {
 }
 
 // Insert はイベントを変換して記事と ja 翻訳を INSERT する。
-// 戻り値 inserted は「記事行が新規に入ったか」(翻訳の有無は含めない)。
+// 戻り値 inserted は「新規に取り込んだか」。同一 article_id の再送も、同一 source_url を別 article_id で
+// 送り直した取り直しも、既に取り込み済みとして inserted=false になり何も挿入しない。
 // 必須フィールド欠落・ja 以外の lang・translations 不正・列幅超過は ErrInvalidEventPayload。
 func (uc *Interactor) Insert(ctx context.Context, event apinews.ArticleCollectedEvent) (inserted bool, err error) {
 	if err := validateEvent(event); err != nil {
 		return false, err
 	}
 
-	inserted, err = uc.writer.InsertArticle(ctx, presenter.ArticleFromCollectedEvent(event))
-	if err != nil {
-		return false, err
-	}
-
 	t := event.Translations[0]
-	if err := uc.writer.InsertTranslation(ctx, event.ArticleID, t.Lang, t.Title, t.Summary, t.Body); err != nil {
-		return false, err
-	}
-	return inserted, nil
+	return uc.writer.InsertArticleWithTranslation(
+		ctx, presenter.ArticleFromCollectedEvent(event), t.Lang, t.Title, t.Summary, t.Body)
 }
 
 // validateEvent は必須フィールドが揃い、列幅に収まり、translations が ja 1 件ちょうどであることを確認する。

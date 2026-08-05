@@ -38,9 +38,18 @@ func NewNewsRepository(pool *pgxpool.Pool) *NewsRepository {
 	return &NewsRepository{pool: pool}
 }
 
-// InsertArticle は記事行を挿入する。既存なら inserted=false で no-op。
-func (r *NewsRepository) InsertArticle(ctx context.Context, article domain.Article) (bool, error) {
-	tag, err := r.pool.Exec(ctx,
+// InsertArticleWithTranslation は記事行と翻訳行を 1 トランザクションで挿入する。
+// 記事が既存 (同一 article_id、または同一 source_url の別 article_id) なら inserted=false で何も挿入しない。
+// CHECK 制約違反 (未対応 lang) は ErrInvalidPersistedValue に変換し、記事側も挿入しない。
+func (r *NewsRepository) InsertArticleWithTranslation(ctx context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin ingest transaction: %w", err)
+	}
+	// Commit 済みなら Rollback は no-op になるため、失敗時の解放だけを目的に defer する
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
 		`INSERT INTO news.news_articles
 			(article_id, source, source_url, tags, source_published_at)
 		 VALUES ($1, $2, $3, $4, $5)
@@ -51,28 +60,30 @@ func (r *NewsRepository) InsertArticle(ctx context.Context, article domain.Artic
 	if err != nil {
 		return false, fmt.Errorf("insert article: %w", err)
 	}
-	return tag.RowsAffected() == 1, nil
-}
+	if tag.RowsAffected() == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return false, fmt.Errorf("commit ingest transaction: %w", err)
+		}
+		return false, nil
+	}
 
-// InsertTranslation はインジェスト経路の翻訳挿入。既存翻訳は上書きしない (DO NOTHING)。
-// 親記事不在の状態で呼ぶと FK 違反でエラー (呼び出し側で順序保証)。
-// CHECK 制約違反 (未対応 lang) は ErrInvalidPersistedValue に変換する。
-func (r *NewsRepository) InsertTranslation(ctx context.Context, articleID string, lang, title, summary, body string) error {
-	_, err := r.pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO news.news_article_translations
 			(article_id, lang, title, summary, body)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (article_id, lang) DO NOTHING`,
-		articleID, lang, title, summary, body,
-	)
-	if err != nil {
+		 VALUES ($1, $2, $3, $4, $5)`,
+		article.ArticleID, lang, title, summary, body,
+	); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgCodeCheckViolation {
-			return fmt.Errorf("lang=%q: %w", lang, port.ErrInvalidPersistedValue)
+			return false, fmt.Errorf("lang=%q: %w", lang, port.ErrInvalidPersistedValue)
 		}
-		return fmt.Errorf("insert translation (lang=%s): %w", lang, err)
+		return false, fmt.Errorf("insert translation (lang=%s): %w", lang, err)
 	}
-	return nil
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit ingest transaction: %w", err)
+	}
+	return true, nil
 }
 
 // ListPublished は公開可能かつ指定 lang の翻訳がある記事を published_at DESC, article_id DESC で limit 件返す。

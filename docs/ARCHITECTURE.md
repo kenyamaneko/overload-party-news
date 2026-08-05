@@ -62,26 +62,23 @@ news 側の `iapMiddleware` はヘッダ存在確認と context への email 注
 
 ## インジェスト: Pub/Sub subscriber の冪等性
 
-`news-article-collected` の購読は at-least-once 配送。重複配送を吸収するため以下の 3 段構成:
+`news-article-collected` の購読は at-least-once 配送。加えて newsfeed は要約・publish に失敗した `source_url` の予約を解放して次の周期で取り直すため、同じ URL が新しい `article_id` で届くこともある。両方をまとめて吸収するため、記事行と ja 翻訳行を 1 トランザクションで INSERT する。
 
-1. **DB レベル (親)**: `news_articles` に `INSERT ... ON CONFLICT DO NOTHING`
+1. **記事行**: `news_articles` に `INSERT ... ON CONFLICT DO NOTHING`
    - `article_id` は newsfeed が採番した ULID
-   - 既存行があれば INSERT は no-op。**校閲済みの既存行を上書きしない**ことが重要
-2. **DB レベル (翻訳)**: `news_article_translations` に `INSERT ... ON CONFLICT (article_id, lang) DO NOTHING`
-   - 既存翻訳は維持し、newsfeed の再送で校閲済みテキストを壊さない
-3. **補助キー**: `source_url` の UNIQUE 制約（`article_id` 再採番事故への二次防御）
+   - PK の衝突（同じ記事の再送）でも `source_url` の UNIQUE 衝突（同じ URL の採番違い）でも INSERT は no-op になり、**校閲済みの既存行を上書きしない**
+2. **取込済みの判定**: 記事行が 1 行入ったかどうかで「新規取込」と「取込済み」を分ける
+3. **翻訳行**: 記事行が新規に入ったときだけ `news_article_translations` へ INSERT する
 
-`InsertArticle` と `InsertTranslation` は **独立した冪等操作**として実装し、トランザクションでまとめない。subscriber は両方を順に呼び、どちらかが失敗した時点で NACK → Pub/Sub が再配送する。再配送時は両方の DO NOTHING により、記事・翻訳のいずれかだけが先に入っていても残りを安全に補完できる。
+取込済みと判定したメッセージは ACK し、再配送を止める。
 
-### なぜ tx を張らないか
+### なぜ記事と翻訳を 1 トランザクションで書くか
 
-1. **翻訳テーブルはインジェスト以外にも書かれる**: 管理 UI からの `UpsertTranslation`（ja 編集 / en 追加）でも独立に更新される。ingest 経路だけが記事と翻訳をまとめて書く必要性は薄い
-2. **中間状態が運用で扱える**: 「記事は入ったが翻訳はまだ」は管理 UI の `[ja 未作成]` プレースホルダで可視化される（§FEATURE_SPEC 7）。逆に tx で巻き戻すと、障害が operator から見えなくなる
-3. **FEATURE_SPEC §3.1 の単純化**: MVP では ja 翻訳 1 件のみ。複数翻訳の原子挿入は仕様に無く、tx の利益が薄い
+記事行だけが入って翻訳行が入らない中間状態を作らないため。中間状態を許すと、取込済みと判定した後に翻訳だけを補完する経路が要り、記事の有無と翻訳の有無の組み合わせごとに振る舞いを決めることになる。1 トランザクションなら記事行が入ったかどうかだけで取込の成否が決まり、失敗時は記事行ごと巻き戻って再配送でやり直せる。
 
 ### 既存行の UPDATE は行わない
 
-newsfeed が同じ記事を再送してきた場合、校閲済みのテキストが上書きされると運用者の作業が消える。そのため UPDATE ではなく DO NOTHING を選択する。親記事・翻訳の両方で同じ方針を取る。
+newsfeed が同じ記事を再送してきた場合、校閲済みのテキストが上書きされると運用者の作業が消える。そのため UPDATE ではなく DO NOTHING を選択する。同じ `source_url` を別の `article_id` で取り直したときも、先に入った記事を正とする。
 
 ### ACK 戦略
 

@@ -73,10 +73,9 @@ func seedWithJa(t *testing.T, repo *postgres.NewsRepository, id string, status d
 		Tags:      []string{"compute"},
 		Status:    domain.StatusPending,
 	}
-	inserted, err := repo.InsertArticle(ctx, article)
+	inserted, err := repo.InsertArticleWithTranslation(ctx, article, domain.LangJa, "ja-"+id, "s-"+id, "b-"+id)
 	require.NoError(t, err)
 	require.True(t, inserted)
-	require.NoError(t, repo.InsertTranslation(ctx, id, domain.LangJa, "ja-"+id, "s-"+id, "b-"+id))
 
 	switch status {
 	case domain.StatusPublished:
@@ -91,101 +90,70 @@ func seedWithJa(t *testing.T, repo *postgres.NewsRepository, id string, status d
 // seedPublishedAt は ja 翻訳を持つ記事を 1 件 INSERT し、published_at を指定時刻に固定して公開する。
 func seedPublishedAt(t *testing.T, ctx context.Context, repo *postgres.NewsRepository, id string, publishedAt time.Time) {
 	t.Helper()
-	_, err := repo.InsertArticle(ctx, domain.Article{
+	_, err := repo.InsertArticleWithTranslation(ctx, domain.Article{
 		ArticleID: id, Source: "aws", SourceURL: "https://example.com/" + id,
 		Tags: []string{}, Status: domain.StatusPending,
-	})
+	}, domain.LangJa, "ja-"+id, "s", "b")
 	require.NoError(t, err)
-	require.NoError(t, repo.InsertTranslation(ctx, id, domain.LangJa, "ja-"+id, "s", "b"))
 	require.NoError(t, repo.Publish(ctx, id, "seed@example.com", publishedAt))
 }
 
-func TestInsertArticle(t *testing.T) {
+func TestInsertArticleWithTranslation(t *testing.T) {
 	ctx := context.Background()
 	baseArticle := domain.Article{
 		ArticleID: "01", Source: "aws", SourceURL: "https://aws.amazon.com/a",
 		Tags: []string{"x"}, Status: domain.StatusPending,
 	}
 
-	t.Run("記事の INSERT", func(t *testing.T) {
-		cases := []struct {
-			name         string
-			setup        func(t *testing.T, repo *postgres.NewsRepository)
-			mutate       func(*domain.Article)
-			wantInserted bool
-		}{
-			{
-				name:         "新規記事のとき、true を返す",
-				setup:        func(_ *testing.T, _ *postgres.NewsRepository) {},
-				mutate:       func(_ *domain.Article) {},
-				wantInserted: true,
-			},
-			{
-				name: "同一 article_id が既存のとき、false を返す",
-				setup: func(t *testing.T, repo *postgres.NewsRepository) {
-					_, err := repo.InsertArticle(ctx, baseArticle)
-					require.NoError(t, err)
-				},
-				mutate:       func(_ *domain.Article) {},
-				wantInserted: false,
-			},
-			{
-				name: "別 article_id でも source_url が既存のとき、false を返す",
-				setup: func(t *testing.T, repo *postgres.NewsRepository) {
-					_, err := repo.InsertArticle(ctx, baseArticle)
-					require.NoError(t, err)
-				},
-				mutate:       func(a *domain.Article) { a.ArticleID = "99" },
-				wantInserted: false,
-			},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				sharedPG.Truncate(t)
-				repo := postgres.NewNewsRepository(sharedPG.Pool)
-				tc.setup(t, repo)
-
-				a := baseArticle
-				tc.mutate(&a)
-
-				inserted, err := repo.InsertArticle(ctx, a)
-
-				require.NoError(t, err)
-				assert.Equal(t, tc.wantInserted, inserted)
-			})
-		}
-	})
-}
-
-func TestInsertTranslation(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("翻訳の INSERT", func(t *testing.T) {
-		t.Run("同一 (article_id, lang) で再挿入すると、既存翻訳は上書きされない", func(t *testing.T) {
+	t.Run("記事と翻訳の INSERT", func(t *testing.T) {
+		t.Run("新規記事のとき、true を返し記事と翻訳が保存される", func(t *testing.T) {
 			repo := newRepo(t)
 
-			_, err := repo.InsertArticle(ctx, domain.Article{
-				ArticleID: "01", Source: "aws", SourceURL: "https://aws.amazon.com/a",
-				Tags: []string{"x"}, Status: domain.StatusPending,
-			})
+			inserted, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "最初のタイトル", "最初の要約", "最初の本文")
+
 			require.NoError(t, err)
-			require.NoError(t, repo.InsertTranslation(ctx, "01", domain.LangJa, "ORIGINAL", "s", "b"))
+			assert.True(t, inserted)
+			aw, err := fetchArticleWithTranslations(t, repo, "01")
+			require.NoError(t, err)
+			assert.Equal(t, "https://aws.amazon.com/a", aw.Article.SourceURL)
+			require.Len(t, aw.Translations, 1)
+			assert.Equal(t, "最初のタイトル", aw.Translations[0].Title)
+			assert.Equal(t, "最初の要約", aw.Translations[0].Summary)
+			assert.Equal(t, "最初の本文", aw.Translations[0].Body)
+		})
 
-			// 同一 (article_id, lang) で再挿入 → DO NOTHING
-			require.NoError(t, repo.InsertTranslation(ctx, "01", domain.LangJa, "OVERWRITE", "s2", "b2"))
+		t.Run("同一 article_id が既存のとき、false を返し既存翻訳は上書きされない", func(t *testing.T) {
+			repo := newRepo(t)
+			_, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "最初のタイトル", "最初の要約", "最初の本文")
+			require.NoError(t, err)
 
+			inserted, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "再送のタイトル", "再送の要約", "再送の本文")
+
+			require.NoError(t, err)
+			assert.False(t, inserted)
 			aw, err := fetchArticleWithTranslations(t, repo, "01")
 			require.NoError(t, err)
 			require.Len(t, aw.Translations, 1)
-			assert.Equal(t, "ORIGINAL", aw.Translations[0].Title, "既存 ja 翻訳は InsertTranslation で上書きされない")
+			assert.Equal(t, "最初のタイトル", aw.Translations[0].Title)
 		})
 
-		t.Run("親記事が存在しないとき、FK 違反でエラーになる", func(t *testing.T) {
+		t.Run("別 article_id でも source_url が既存のとき、false を返し記事も翻訳も追加されない", func(t *testing.T) {
 			repo := newRepo(t)
+			_, err := repo.InsertArticleWithTranslation(ctx, baseArticle, domain.LangJa, "最初のタイトル", "最初の要約", "最初の本文")
+			require.NoError(t, err)
+			renumbered := baseArticle
+			renumbered.ArticleID = "99"
 
-			err := repo.InsertTranslation(ctx, "ghost", domain.LangJa, "t", "s", "b")
-			assert.Error(t, err, "親記事が無ければ FK 違反でエラーになるべき")
+			inserted, err := repo.InsertArticleWithTranslation(ctx, renumbered, domain.LangJa, "取り直しのタイトル", "取り直しの要約", "取り直しの本文")
+
+			require.NoError(t, err)
+			assert.False(t, inserted)
+			_, err = repo.GetArticleByID(ctx, "99")
+			assert.ErrorIs(t, err, port.ErrNotFound)
+			translations, err := repo.ListTranslationsByArticleIDs(ctx, []string{"01", "99"})
+			require.NoError(t, err)
+			require.Len(t, translations, 1)
+			assert.Equal(t, "最初のタイトル", translations[0].Title)
 		})
 	})
 }
@@ -196,27 +164,35 @@ func TestTranslation_UnsupportedLang(t *testing.T) {
 	_ = seedWithJa(t, repo, "01", domain.StatusPending)
 
 	t.Run("未対応 lang の拒否", func(t *testing.T) {
-		cases := []struct {
+		t.Run("取込で fr の翻訳を渡すとき、ErrInvalidPersistedValue になり記事も保存されない", func(t *testing.T) {
+			article := domain.Article{
+				ArticleID: "02", Source: "aws", SourceURL: "https://aws.amazon.com/b",
+				Tags: []string{}, Status: domain.StatusPending,
+			}
+
+			_, err := repo.InsertArticleWithTranslation(ctx, article, "fr", "t", "s", "b")
+
+			assert.ErrorIs(t, err, port.ErrInvalidPersistedValue)
+			_, err = repo.GetArticleByID(ctx, "02")
+			assert.ErrorIs(t, err, port.ErrNotFound)
+		})
+
+		upsertCases := []struct {
 			name string
-			op   func() error
+			lang string
 		}{
 			{
-				name: "InsertTranslation に fr を渡すとき、ErrInvalidPersistedValue になる",
-				op:   func() error { return repo.InsertTranslation(ctx, "01", "fr", "t", "s", "b") },
-			},
-			{
 				name: "UpsertTranslation に fr を渡すとき、ErrInvalidPersistedValue になる",
-				op:   func() error { return repo.UpsertTranslation(ctx, "01", "fr", "t", "s", "b") },
+				lang: "fr",
 			},
 			{
 				name: "UpsertTranslation に空 lang を渡すとき、ErrInvalidPersistedValue になる",
-				op:   func() error { return repo.UpsertTranslation(ctx, "01", "", "t", "s", "b") },
+				lang: "",
 			},
 		}
-
-		for _, tc := range cases {
+		for _, tc := range upsertCases {
 			t.Run(tc.name, func(t *testing.T) {
-				err := tc.op()
+				err := repo.UpsertTranslation(ctx, "01", tc.lang, "t", "s", "b")
 				assert.ErrorIs(t, err, port.ErrInvalidPersistedValue)
 			})
 		}
@@ -228,21 +204,19 @@ func TestListPublished(t *testing.T) {
 	repo := newRepo(t)
 
 	// ja のみ翻訳あり
-	_, err := repo.InsertArticle(ctx, domain.Article{
+	_, err := repo.InsertArticleWithTranslation(ctx, domain.Article{
 		ArticleID: "ja-only", Source: "aws", SourceURL: "https://example.com/ja-only",
 		Tags: []string{}, Status: domain.StatusPending,
-	})
+	}, domain.LangJa, "ja", "s", "b")
 	require.NoError(t, err)
-	require.NoError(t, repo.InsertTranslation(ctx, "ja-only", domain.LangJa, "ja", "s", "b"))
 	require.NoError(t, repo.Publish(ctx, "ja-only", "alice@example.com", time.Now()))
 
 	// ja + en 両方 (en は管理 UI 経由で後追加される想定 → UpsertTranslation で入れる)
-	_, err = repo.InsertArticle(ctx, domain.Article{
+	_, err = repo.InsertArticleWithTranslation(ctx, domain.Article{
 		ArticleID: "both", Source: "aws", SourceURL: "https://example.com/both",
 		Tags: []string{}, Status: domain.StatusPending,
-	})
+	}, domain.LangJa, "ja", "s", "b")
 	require.NoError(t, err)
-	require.NoError(t, repo.InsertTranslation(ctx, "both", domain.LangJa, "ja", "s", "b"))
 	require.NoError(t, repo.UpsertTranslation(ctx, "both", domain.LangEn, "en", "s", "b"))
 	require.NoError(t, repo.Publish(ctx, "both", "alice@example.com", time.Now()))
 
