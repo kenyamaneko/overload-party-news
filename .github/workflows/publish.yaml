@@ -36,7 +36,7 @@ permissions:
 jobs:
   publish-api-news:
     if: inputs.target == 'api-news'
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -71,7 +71,7 @@ jobs:
 
   publish-api-news-npm:
     if: inputs.target == 'api-news-npm'
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
