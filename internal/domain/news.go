@@ -84,7 +84,7 @@ type Translation struct {
 	UpdatedAt time.Time
 }
 
-// ArticleWithTranslations は管理 UI が扱う「記事 + 存在する翻訳群」の合成 view。
+// ArticleWithTranslations は記事とその翻訳群を合成した view。
 type ArticleWithTranslations struct {
 	Article      Article
 	Translations []Translation
