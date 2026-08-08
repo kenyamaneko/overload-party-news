@@ -66,6 +66,3 @@ push 受け口 (`/internal/v1/pubsub/news-article-collected`) は 2xx で ack、
 
 - **キャッシュキーに `lang` を含める**: ja と en で独立してキャッシュする
 - **TTL 上限**: 2 時間（newsfeed 収集周期と同じ）
-- **無効化**: 校閲で `status` 遷移 / 翻訳 upsert が起きた瞬間に、影響する記事の全 lang 分のキャッシュを落とす
-
-校閲 → 無効化のフックは usecase 層から「記事 ID + 変化した lang 群」を通知するコールバックで行う。キャッシュ実装側は notify を受けて該当キーを削除する。usecase はキャッシュ実装を知らない責務分離を維持する。
