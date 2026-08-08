@@ -2,7 +2,7 @@ CREATE SCHEMA IF NOT EXISTS news;
 
 -- 記事の共通 (言語非依存) 部分。
 -- 校閲状態 (pending / published / rejected) は永続化せず、reviewed_at と published_at から導出する。
--- 導出ルールは apinews.DeriveStatus が SSoT で、本テーブルの WHERE 述語と 1:1 対応。
+-- 導出ルールは domain.DeriveStatus が SSoT で、本テーブルの WHERE 述語と 1:1 対応。
 -- title / summary / body は言語別に news_article_translations で保持する。
 CREATE TABLE IF NOT EXISTS news.news_articles (
     article_id          VARCHAR(26) PRIMARY KEY,                 -- ULID (newsfeed 採番)
