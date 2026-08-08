@@ -6,7 +6,7 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 )
 
-// MockNewsRepo は port の 2 インタフェースをすべて実装する 1 個のモック。
+// MockNewsRepo は PublicNewsQuerier / NewsIngestWriter を実装するテスト用モック。
 // 必要な Fn フィールドだけ埋めて使う。未設定の呼び出しは panic で意図しない呼び出しを検出する。
 type MockNewsRepo struct {
 	ListPublishedFn                func(ctx context.Context, lang string, limit int) ([]domain.PublishedArticleSummary, error)

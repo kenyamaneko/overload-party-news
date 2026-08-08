@@ -27,7 +27,6 @@ import (
 	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
-	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres/postgrestest"
 	"github.com/kenyamaneko/overload-party-news/internal/router"
@@ -144,31 +143,105 @@ func marshalEvent(t *testing.T, event apinews.ArticleCollectedEvent) []byte {
 	return data
 }
 
-// loadArticleWithTranslations は repo の分離された I/O を結合し Status を導出する統合テスト用ヘルパー。
-func loadArticleWithTranslations(repo *postgres.NewsRepository, articleID string) (*domain.ArticleWithTranslations, error) {
+// loadArticleWithTranslations は記事 + 翻訳を直接 SQL で取得して合成し、Status を導出する統合テスト用ヘルパー。
+func loadArticleWithTranslations(articleID string) (*domain.ArticleWithTranslations, error) {
 	ctx := context.Background()
-	article, err := repo.GetArticleByID(ctx, articleID)
+	row := sharedPG.Pool.QueryRow(ctx,
+		`SELECT article_id, source, source_url, tags,
+		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
+		   FROM news.news_articles
+		  WHERE article_id = $1`,
+		articleID,
+	)
+	var article domain.Article
+	if err := row.Scan(
+		&article.ArticleID, &article.Source, &article.SourceURL, &article.Tags,
+		&article.SourcePublishedAt, &article.PublishedAt, &article.IngestedAt,
+		&article.ReviewedAt, &article.Reviewer, &article.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	rows, err := sharedPG.Pool.Query(ctx,
+		`SELECT article_id, lang, title, summary, body, created_at, updated_at
+		   FROM news.news_article_translations
+		  WHERE article_id = $1
+		  ORDER BY lang`,
+		articleID,
+	)
 	if err != nil {
 		return nil, err
 	}
-	translations, err := repo.ListTranslationsByArticleIDs(ctx, []string{articleID})
+	defer rows.Close()
+
+	var translations []domain.Translation
+	for rows.Next() {
+		var t domain.Translation
+		if err := rows.Scan(&t.ArticleID, &t.Lang, &t.Title, &t.Summary, &t.Body, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		translations = append(translations, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	article.Status = domain.DeriveStatus(article)
+	return &domain.ArticleWithTranslations{Article: article, Translations: translations}, nil
+}
+
+// articleExists は article_id の記事が永続化されているかを直接 SQL で確認する統合テスト用ヘルパー。
+func articleExists(ctx context.Context, articleID string) (bool, error) {
+	var exists bool
+	err := sharedPG.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM news.news_articles WHERE article_id = $1)`,
+		articleID,
+	).Scan(&exists)
+	return exists, err
+}
+
+// fetchArticleIDs は永続化済み記事の article_id 一覧を ingested_at DESC で返す統合テスト用ヘルパー。
+func fetchArticleIDs(ctx context.Context) ([]string, error) {
+	rows, err := sharedPG.Pool.Query(ctx, `SELECT article_id FROM news.news_articles ORDER BY ingested_at DESC`)
 	if err != nil {
 		return nil, err
 	}
-	article.Status = domain.DeriveStatus(*article)
-	return &domain.ArticleWithTranslations{Article: *article, Translations: translations}, nil
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// countTranslations は指定 article_id 群に紐づく翻訳行数を直接 SQL で数える統合テスト用ヘルパー。
+func countTranslations(ctx context.Context, articleIDs []string) (int, error) {
+	var count int
+	err := sharedPG.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM news.news_article_translations WHERE article_id = ANY($1)`,
+		articleIDs,
+	).Scan(&count)
+	return count, err
 }
 
 func TestPushIngestE2E(t *testing.T) {
 	t.Run("push受け口経由の記事取込パイプライン", func(t *testing.T) {
 		t.Run("有効なpushを投げると、200を返し記事とja翻訳が全フィールドでpending永続化される", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 			w := doPush(t, r, validEventPayload(t, articleID))
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			aw, err := loadArticleWithTranslations(repo, articleID)
+			aw, err := loadArticleWithTranslations(articleID)
 			require.NoError(t, err)
 			assert.Equal(t, articleID, aw.Article.ArticleID)
 			assert.Equal(t, domain.StatusPending, aw.Article.Status)
@@ -185,20 +258,20 @@ func TestPushIngestE2E(t *testing.T) {
 		})
 
 		t.Run("同一イベントをpushで2回投げても、200を2回返し翻訳は増えずcreated_atも変わらない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA2"
 			payload := validEventPayload(t, articleID)
 
 			w1 := doPush(t, r, payload)
 			assert.Equal(t, http.StatusOK, w1.Code)
-			aw1, err := loadArticleWithTranslations(repo, articleID)
+			aw1, err := loadArticleWithTranslations(articleID)
 			require.NoError(t, err)
 			require.Len(t, aw1.Translations, 1)
 
 			w2 := doPush(t, r, payload)
 			assert.Equal(t, http.StatusOK, w2.Code)
 
-			aw2, err := loadArticleWithTranslations(repo, articleID)
+			aw2, err := loadArticleWithTranslations(articleID)
 			require.NoError(t, err)
 			require.Len(t, aw2.Translations, 1, "重複 push で翻訳は増えない")
 			assert.Equal(t, aw1.Translations[0].CreatedAt.UnixNano(), aw2.Translations[0].CreatedAt.UnixNano(),
@@ -206,7 +279,7 @@ func TestPushIngestE2E(t *testing.T) {
 		})
 
 		t.Run("既存記事と同じsource_urlを別のarticle_idでpushすると、200を返し記事も翻訳も増えない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 			ctx := context.Background()
 			const sourceURL = "https://aws.amazon.com/blogs/aws/same-url"
 			firstID := "01ARZ3NDEKTSV4RRFFQ69G5FB1"
@@ -218,33 +291,34 @@ func TestPushIngestE2E(t *testing.T) {
 			w2 := doPush(t, r, marshalEvent(t, collectedEvent(secondID, sourceURL, "取り直しのタイトル", "取り直しの要約", "取り直しの本文")))
 			assert.Equal(t, http.StatusOK, w2.Code)
 
-			articles, err := repo.ListArticles(ctx, 10)
+			articleIDs, err := fetchArticleIDs(ctx)
 			require.NoError(t, err)
-			assert.Len(t, articles, 1)
-			_, err = repo.GetArticleByID(ctx, secondID)
-			assert.ErrorIs(t, err, port.ErrNotFound)
+			assert.Len(t, articleIDs, 1)
+			exists, err := articleExists(ctx, secondID)
+			require.NoError(t, err)
+			assert.False(t, exists)
 
-			translations, err := repo.ListTranslationsByArticleIDs(ctx, []string{firstID, secondID})
+			translationCount, err := countTranslations(ctx, []string{firstID, secondID})
 			require.NoError(t, err)
-			assert.Len(t, translations, 1)
+			assert.Equal(t, 1, translationCount)
 		})
 
 		t.Run("既存記事と同じsource_urlを別のarticle_idでpushしても、先に入った記事の翻訳は上書きされない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 			const sourceURL = "https://aws.amazon.com/blogs/aws/keep-first"
 			firstID := "01ARZ3NDEKTSV4RRFFQ69G5FB3"
 			secondID := "01ARZ3NDEKTSV4RRFFQ69G5FB4"
 
 			w1 := doPush(t, r, marshalEvent(t, collectedEvent(firstID, sourceURL, "最初のタイトル", "最初の要約", "最初の本文")))
 			require.Equal(t, http.StatusOK, w1.Code)
-			aw1, err := loadArticleWithTranslations(repo, firstID)
+			aw1, err := loadArticleWithTranslations(firstID)
 			require.NoError(t, err)
 			require.Len(t, aw1.Translations, 1)
 
 			w2 := doPush(t, r, marshalEvent(t, collectedEvent(secondID, sourceURL, "取り直しのタイトル", "取り直しの要約", "取り直しの本文")))
 			require.Equal(t, http.StatusOK, w2.Code)
 
-			aw2, err := loadArticleWithTranslations(repo, firstID)
+			aw2, err := loadArticleWithTranslations(firstID)
 			require.NoError(t, err)
 			require.Len(t, aw2.Translations, 1)
 			assert.Equal(t, "最初のタイトル", aw2.Translations[0].Title)
@@ -266,14 +340,14 @@ func TestPushIngestE2E(t *testing.T) {
 			wUp := doPush(t, buildRouter(t, repo), payload)
 			assert.Equal(t, http.StatusOK, wUp.Code)
 
-			aw, err := loadArticleWithTranslations(repo, articleID)
+			aw, err := loadArticleWithTranslations(articleID)
 			require.NoError(t, err)
 			assert.Equal(t, articleID, aw.Article.ArticleID)
 			require.Len(t, aw.Translations, 1)
 		})
 
 		t.Run("ja以外の翻訳を含むイベントをpushすると、200を返しDBに永続化されない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA3"
 			data, err := json.Marshal(apinews.ArticleCollectedEvent{
 				ArticleID: articleID,
@@ -288,23 +362,24 @@ func TestPushIngestE2E(t *testing.T) {
 			w := doPush(t, r, data)
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			_, err = repo.GetArticleByID(context.Background(), articleID)
-			assert.Error(t, err, "invalid payload は DB に永続化されないべき")
+			exists, err := articleExists(context.Background(), articleID)
+			require.NoError(t, err)
+			assert.False(t, exists, "invalid payload は DB に永続化されないべき")
 		})
 
 		t.Run("壊れたJSONイベントをpushすると、200を返しDBに永続化されない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 
 			w := doPush(t, r, []byte("{not-json"))
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			items, err := repo.ListArticles(context.Background(), 10)
+			articleIDs, err := fetchArticleIDs(context.Background())
 			require.NoError(t, err)
-			assert.Empty(t, items, "壊れた JSON は DB に永続化されないべき")
+			assert.Empty(t, articleIDs, "壊れた JSON は DB に永続化されないべき")
 		})
 
 		t.Run("message.dataがbase64として不正なpushを投げると、400を返し応答に復号不能の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 
 			w := httptest.NewRecorder()
 			body := `{"message":{"data":"not-valid-base64!!"}}`
@@ -312,48 +387,48 @@ func TestPushIngestE2E(t *testing.T) {
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Contains(t, w.Body.String(), "undecodable data")
-			items, err := repo.ListArticles(context.Background(), 10)
+			articleIDs, err := fetchArticleIDs(context.Background())
 			require.NoError(t, err)
-			assert.Empty(t, items, "base64 復号不能な push は DB に永続化されないべき")
+			assert.Empty(t, articleIDs, "base64 復号不能な push は DB に永続化されないべき")
 		})
 
 		t.Run("push envelopeの形式でない本文を投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{not-json`)))
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Contains(t, w.Body.String(), "malformed envelope")
-			items, err := repo.ListArticles(context.Background(), 10)
+			articleIDs, err := fetchArticleIDs(context.Background())
 			require.NoError(t, err)
-			assert.Empty(t, items, "envelope 不正な push は DB に永続化されないべき")
+			assert.Empty(t, articleIDs, "envelope 不正な push は DB に永続化されないべき")
 		})
 
 		t.Run("messageフィールドが無いpushを投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{}`)))
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Contains(t, w.Body.String(), "malformed envelope")
-			items, err := repo.ListArticles(context.Background(), 10)
+			articleIDs, err := fetchArticleIDs(context.Background())
 			require.NoError(t, err)
-			assert.Empty(t, items, "message フィールドが無い push は DB に永続化されないべき")
+			assert.Empty(t, articleIDs, "message フィールドが無い push は DB に永続化されないべき")
 		})
 
 		t.Run("message.dataが空文字のpushを投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{"message":{"data":""}}`)))
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Contains(t, w.Body.String(), "malformed envelope")
-			items, err := repo.ListArticles(context.Background(), 10)
+			articleIDs, err := fetchArticleIDs(context.Background())
 			require.NoError(t, err)
-			assert.Empty(t, items, "message.data が空文字の push は DB に永続化されないべき")
+			assert.Empty(t, articleIDs, "message.data が空文字の push は DB に永続化されないべき")
 		})
 
 		storedCases := []struct {
@@ -379,12 +454,12 @@ func TestPushIngestE2E(t *testing.T) {
 		}
 		for _, tc := range storedCases {
 			t.Run(tc.name, func(t *testing.T) {
-				r, repo := newTestRouter(t)
+				r, _ := newTestRouter(t)
 
 				w := doPush(t, r, eventPayload(t, tc.articleID, tc.source))
 				assert.Equal(t, http.StatusOK, w.Code)
 
-				aw, err := loadArticleWithTranslations(repo, tc.articleID)
+				aw, err := loadArticleWithTranslations(tc.articleID)
 				require.NoError(t, err)
 				assert.Equal(t, tc.articleID, aw.Article.ArticleID)
 				assert.Equal(t, tc.source, aw.Article.Source)
@@ -410,19 +485,19 @@ func TestPushIngestE2E(t *testing.T) {
 		}
 		for _, tc := range discardedCases {
 			t.Run(tc.name, func(t *testing.T) {
-				r, repo := newTestRouter(t)
+				r, _ := newTestRouter(t)
 
 				w := doPush(t, r, eventPayload(t, tc.articleID, tc.source))
 				assert.Equal(t, http.StatusOK, w.Code)
 
-				items, err := repo.ListArticles(context.Background(), 10)
+				articleIDs, err := fetchArticleIDs(context.Background())
 				require.NoError(t, err)
-				assert.Empty(t, items)
+				assert.Empty(t, articleIDs)
 			})
 		}
 
 		t.Run("article_idが27文字のpushで記事が捨てられた後、26文字に直してpushすると200を返し記事が永続化される", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 
 			wTooLong := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7"))
 			require.Equal(t, http.StatusOK, wTooLong.Code)
@@ -430,14 +505,14 @@ func TestPushIngestE2E(t *testing.T) {
 			wRetry := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 			assert.Equal(t, http.StatusOK, wRetry.Code)
 
-			aw, err := loadArticleWithTranslations(repo, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			aw, err := loadArticleWithTranslations("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 			require.NoError(t, err)
 			assert.Equal(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", aw.Article.ArticleID)
 			require.Len(t, aw.Translations, 1)
 		})
 
 		t.Run("envelope不正なpushで400になった後、同じ記事の有効なpushを投げ直すと200を返し記事が永続化される", func(t *testing.T) {
-			r, repo := newTestRouter(t)
+			r, _ := newTestRouter(t)
 			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA4"
 
 			wBad := httptest.NewRecorder()
@@ -447,7 +522,7 @@ func TestPushIngestE2E(t *testing.T) {
 			wRetry := doPush(t, r, validEventPayload(t, articleID))
 			assert.Equal(t, http.StatusOK, wRetry.Code)
 
-			aw, err := loadArticleWithTranslations(repo, articleID)
+			aw, err := loadArticleWithTranslations(articleID)
 			require.NoError(t, err)
 			assert.Equal(t, articleID, aw.Article.ArticleID)
 			require.Len(t, aw.Translations, 1)
