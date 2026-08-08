@@ -35,7 +35,6 @@ CREATE INDEX IF NOT EXISTS idx_news_articles_published
     ON news.news_articles (published_at DESC NULLS LAST, article_id DESC)
     WHERE published_at IS NOT NULL AND published_at >= reviewed_at;
 
--- 管理 UI の一覧クエリ用: 取り込み順 (status フィルタは reviewed_at / published_at の比較で評価される)
 CREATE INDEX IF NOT EXISTS idx_news_articles_ingested
     ON news.news_articles (ingested_at DESC);
 

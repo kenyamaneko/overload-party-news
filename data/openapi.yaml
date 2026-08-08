@@ -6,7 +6,6 @@ info:
     News service の REST 契約 (gateway → news の公開 API)。
     本ファイルが SSoT。`packages/api-news` の Go 型と `packages/api-news-npm` の TypeScript 型を本ファイルから生成する。
     `/api/v1/news/*` は X-Internal-Auth (HMAC JWT) で認証し、player_id は sub クレームから解決する。
-    管理 UI (/admin/*) は HTML を返す内部 UI のため本仕様には含めない。
 
 paths:
   /health:

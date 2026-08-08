@@ -56,7 +56,7 @@ news スキーマはクラウドニュース記事の校閲状態と配信用コ
 
 **設計判断:**
 
-- 言語依存フィールド (`title` / `summary` / `body`) を別テーブルに正規化する。MVP は `ja` のみ newsfeed が生成し、`en` は管理 UI 経由で人手追加する。新言語追加時に `news_articles` の DDL を変更せず済む
+- 言語依存フィールド (`title` / `summary` / `body`) を別テーブルに正規化する。MVP は `ja` のみ newsfeed が生成し、`en` は運用者が DB を直接更新して追加する。新言語追加時に `news_articles` の DDL を変更せず済む
 - ON DELETE CASCADE で親記事削除時に翻訳が孤児として残らないことを DB レベルで保証
 - 翻訳編集は `news_articles.updated_at` を動かさない。これにより「記事レベルの最終更新 = 承認・却下」という監査性を保つ
 - `lang` の列挙は ENUM ではなく VARCHAR を採用。news 側のコードで許容値を強制し、未知値はリクエストをエラー化（`ErrUnsupportedLang`）する
@@ -89,9 +89,8 @@ CREATE INDEX idx_news_articles_published
     ON news.news_articles (published_at DESC NULLS LAST, article_id DESC)
     WHERE status = 'published';
 
--- 管理 UI の status フィルタ一覧
-CREATE INDEX idx_news_articles_status_ingested
-    ON news.news_articles (status, ingested_at DESC);
+CREATE INDEX idx_news_articles_ingested
+    ON news.news_articles (ingested_at DESC);
 ```
 
 - 前者は部分インデックスで、公開対象の記事のみを索引に載せる
