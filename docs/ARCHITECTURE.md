@@ -16,7 +16,7 @@ news は **記事コンテンツ**の single source of truth。`news.news_articl
 
 newsfeed（Cloud Run Job）は DB を触らない。収集結果を Pub/Sub 経由で news に引き渡すのみ。これにより:
 
-- news スキーマの書き込み権限を news サービス 1 つに閉じられる（shop と同じ「1 スキーマ 1 所有者」原則）
+- news 以外のサービスがスキーマに書き込む経路を持たない（shop と同じ「1 スキーマ 1 所有者」原則）
 - newsfeed 側の障害が news の DB 状態を壊さない
 - newsfeed の再実行（同一記事の再取得）は Pub/Sub 経由でしか到達しないため、news 側の冪等性制御 1 箇所で吸収できる
 

@@ -16,7 +16,7 @@ Gateway
             └─ news-article-collected ← newsfeed (Cloud Run Job)
 ```
 
-書き込みは news 自身のみ。gateway からは配信のみ、newsfeed は Pub/Sub publish のみで DB には触れない。
+取り込みの書き込みは news 自身のみ。gateway からは配信のみ、newsfeed は Pub/Sub publish のみで DB には触れない。承認・却下・翻訳編集は運用者が DB を直接更新する。
 
 ## ローカル開発
 
