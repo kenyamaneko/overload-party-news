@@ -6,7 +6,7 @@
 
 ## News の責務境界 (SSoT と書き込み権限)
 
-news は **記事コンテンツ**の single source of truth。`news.news_articles` への書き込みは news のみが行う。
+news は **記事コンテンツ**の single source of truth。`news.news_articles` への初期挿入 (取り込み) は news サービスのみが行う。
 
 | ライフサイクル | 書き手 | 契機 |
 |---|---|---|
