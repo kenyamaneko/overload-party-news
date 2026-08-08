@@ -12,9 +12,6 @@ const (
 	StatusRejected  Status = "rejected"
 )
 
-// Statuses は全 Status の列挙。「全件」呼び出しを nil 分岐なく表現するために slice で公開。
-var Statuses = []Status{StatusPending, StatusPublished, StatusRejected}
-
 // DeriveStatus は reviewed_at / published_at から status を導出する。校閲状態の SSoT。
 func DeriveStatus(a Article) Status {
 	if a.ReviewedAt == nil {
@@ -84,7 +81,7 @@ type Translation struct {
 	UpdatedAt time.Time
 }
 
-// ArticleWithTranslations は管理 UI が扱う「記事 + 存在する翻訳群」の合成 view。
+// ArticleWithTranslations は記事とその翻訳群を合成した view。
 type ArticleWithTranslations struct {
 	Article      Article
 	Translations []Translation

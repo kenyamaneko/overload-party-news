@@ -2,8 +2,6 @@
 
 クラウドニュース記事の校閲・配信を行う内部マイクロサービス。`news-article-collected` Pub/Sub イベントを購読して自スキーマに永続化し、校閲を通った記事を gateway 経由でクライアントへ配信する。起動するのは gateway 向け REST のポート 9008 のみ。
 
-校閲の管理 UI は当面提供せず、運用者が手作業で行う。将来は管理機能を別サービスとして用意する予定で、本リポの管理 UI のコードとドキュメントはその設計の下敷きとして残している。
-
 詳細は [機能仕様書](docs/FEATURE_SPEC.md) / [サービス設計書](docs/ARCHITECTURE.md) / [REST 契約](data/openapi.yaml) / [Pub/Sub 契約](data/asyncapi.yaml) / [データ設計書](docs/DATA_DESIGN.md) を参照。
 
 [テスト観点カタログ](https://kenyamaneko.github.io/overload-party-news/): テスト名から生成した、テスト済みの観点の一覧。
@@ -18,7 +16,7 @@ Gateway
             └─ news-article-collected ← newsfeed (Cloud Run Job)
 ```
 
-書き込みは news 自身のみ。gateway からは配信のみ、newsfeed は Pub/Sub publish のみで DB には触れない。
+取り込みの書き込みは news 自身のみ。gateway からは配信のみ、newsfeed は Pub/Sub publish のみで DB には触れない。承認・却下・翻訳編集は運用者が DB を直接更新する。
 
 ## ローカル開発
 

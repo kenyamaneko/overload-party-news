@@ -69,7 +69,6 @@ func run() error {
 		internalauth.StaticPublicKeyResolver(internalAuthKey, internalauth.DefaultKeyID),
 	)
 
-	// 校閲は当面運用者の手動作業に切り替えたため、管理 UI のサーバは起動しない。
 	publicSrv := &http.Server{
 		Handler:           router.NewPublic(newsH, authVerifier, articleCollectedPushH),
 		ReadHeaderTimeout: 10 * time.Second,

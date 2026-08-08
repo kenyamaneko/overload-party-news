@@ -2,7 +2,6 @@ package postgres_test
 
 import (
 	"context"
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -30,35 +29,103 @@ func newRepo(t *testing.T) *postgres.NewsRepository {
 	return postgres.NewNewsRepository(sharedPG.Pool)
 }
 
-// translationByLang は ArticleWithTranslations から指定 lang の翻訳を返す純粋なルックアップ。
-// 非存在時は t.Fatalf で停止する。
-func translationByLang(t *testing.T, aw *domain.ArticleWithTranslations, lang string) domain.Translation {
+// articleExists は article_id の記事が永続化されているかを直接 SQL で確認するテストヘルパー。
+func articleExists(t *testing.T, ctx context.Context, id string) bool {
 	t.Helper()
-	for _, tr := range aw.Translations {
-		if tr.Lang == lang {
-			return tr
-		}
-	}
-	t.Fatalf("translation not found: lang=%s", lang)
-	return domain.Translation{}
+	var exists bool
+	err := sharedPG.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM news.news_articles WHERE article_id = $1)`,
+		id,
+	).Scan(&exists)
+	require.NoError(t, err)
+	return exists
 }
 
-// fetchArticleWithTranslations は repo から記事 + 翻訳を取得して合成し、Status を導出するテストヘルパー。
-// repo は分離された I/O を提供するだけで、合成と Status 導出は本来 usecase 層の責務だが、
-// 本ファイルでは便宜的にテスト内で組み立てる。
-func fetchArticleWithTranslations(t *testing.T, repo *postgres.NewsRepository, id string) (*domain.ArticleWithTranslations, error) {
+// fetchTranslationsByArticleIDs は指定 article_id 群の翻訳行を直接 SQL で取得するテストヘルパー。
+func fetchTranslationsByArticleIDs(t *testing.T, ctx context.Context, articleIDs []string) []domain.Translation {
+	t.Helper()
+	rows, err := sharedPG.Pool.Query(ctx,
+		`SELECT article_id, lang, title, summary, body, created_at, updated_at
+		   FROM news.news_article_translations
+		  WHERE article_id = ANY($1)
+		  ORDER BY article_id, lang`,
+		articleIDs,
+	)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var translations []domain.Translation
+	for rows.Next() {
+		var tr domain.Translation
+		require.NoError(t, rows.Scan(&tr.ArticleID, &tr.Lang, &tr.Title, &tr.Summary, &tr.Body, &tr.CreatedAt, &tr.UpdatedAt))
+		translations = append(translations, tr)
+	}
+	require.NoError(t, rows.Err())
+	return translations
+}
+
+// fetchArticleWithTranslations は記事 + 翻訳を直接 SQL で取得して合成し、Status を導出するテストヘルパー。
+func fetchArticleWithTranslations(t *testing.T, id string) (*domain.ArticleWithTranslations, error) {
 	t.Helper()
 	ctx := context.Background()
-	article, err := repo.GetArticleByID(ctx, id)
-	if err != nil {
+	row := sharedPG.Pool.QueryRow(ctx,
+		`SELECT article_id, source, source_url, tags,
+		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
+		   FROM news.news_articles
+		  WHERE article_id = $1`,
+		id,
+	)
+	var a domain.Article
+	if err := row.Scan(
+		&a.ArticleID, &a.Source, &a.SourceURL, &a.Tags,
+		&a.SourcePublishedAt, &a.PublishedAt, &a.IngestedAt,
+		&a.ReviewedAt, &a.Reviewer, &a.UpdatedAt,
+	); err != nil {
 		return nil, err
 	}
-	translations, err := repo.ListTranslationsByArticleIDs(ctx, []string{id})
-	if err != nil {
-		return nil, err
-	}
-	article.Status = domain.DeriveStatus(*article)
-	return &domain.ArticleWithTranslations{Article: *article, Translations: translations}, nil
+	a.Status = domain.DeriveStatus(a)
+	translations := fetchTranslationsByArticleIDs(t, ctx, []string{id})
+	return &domain.ArticleWithTranslations{Article: a, Translations: translations}, nil
+}
+
+// applyPublish は Publish 相当の承認遷移 (published_at = reviewed_at = at) を直接 SQL で行うテストヘルパー。
+func applyPublish(t *testing.T, ctx context.Context, id string, reviewer string, at time.Time) {
+	t.Helper()
+	tag, err := sharedPG.Pool.Exec(ctx,
+		`UPDATE news.news_articles
+		    SET published_at = $2,
+		        reviewed_at = $2,
+		        reviewer = $3
+		  WHERE article_id = $1`,
+		id, at, reviewer,
+	)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, tag.RowsAffected())
+}
+
+// applyReject は Reject 相当の却下遷移 (published_at は保持) を直接 SQL で行うテストヘルパー。
+func applyReject(t *testing.T, ctx context.Context, id string, reviewer string, at time.Time) {
+	t.Helper()
+	tag, err := sharedPG.Pool.Exec(ctx,
+		`UPDATE news.news_articles
+		    SET reviewed_at = $2,
+		        reviewer = $3
+		  WHERE article_id = $1`,
+		id, at, reviewer,
+	)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, tag.RowsAffected())
+}
+
+// insertTranslation は翻訳行を直接 SQL で INSERT するテストヘルパー (UPSERT の ON CONFLICT 分岐は使わない)。
+func insertTranslation(t *testing.T, ctx context.Context, articleID, lang, title, summary, body string) {
+	t.Helper()
+	_, err := sharedPG.Pool.Exec(ctx,
+		`INSERT INTO news.news_article_translations (article_id, lang, title, summary, body)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		articleID, lang, title, summary, body,
+	)
+	require.NoError(t, err)
 }
 
 // seedWithJa は ja 翻訳を持つ記事を 1 件 INSERT して status を指定値まで遷移させる。
@@ -79,9 +146,9 @@ func seedWithJa(t *testing.T, repo *postgres.NewsRepository, id string, status d
 
 	switch status {
 	case domain.StatusPublished:
-		require.NoError(t, repo.Publish(ctx, id, "seed@example.com", time.Now()))
+		applyPublish(t, ctx, id, "seed@example.com", time.Now())
 	case domain.StatusRejected:
-		require.NoError(t, repo.Reject(ctx, id, "seed@example.com", time.Now()))
+		applyReject(t, ctx, id, "seed@example.com", time.Now())
 	}
 	article.Status = status
 	return article
@@ -95,7 +162,7 @@ func seedPublishedAt(t *testing.T, ctx context.Context, repo *postgres.NewsRepos
 		Tags: []string{}, Status: domain.StatusPending,
 	}, domain.LangJa, "ja-"+id, "s", "b")
 	require.NoError(t, err)
-	require.NoError(t, repo.Publish(ctx, id, "seed@example.com", publishedAt))
+	applyPublish(t, ctx, id, "seed@example.com", publishedAt)
 }
 
 func TestInsertArticleWithTranslation(t *testing.T) {
@@ -113,7 +180,7 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.True(t, inserted)
-			aw, err := fetchArticleWithTranslations(t, repo, "01")
+			aw, err := fetchArticleWithTranslations(t, "01")
 			require.NoError(t, err)
 			assert.Equal(t, "https://aws.amazon.com/a", aw.Article.SourceURL)
 			require.Len(t, aw.Translations, 1)
@@ -131,7 +198,7 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.False(t, inserted)
-			aw, err := fetchArticleWithTranslations(t, repo, "01")
+			aw, err := fetchArticleWithTranslations(t, "01")
 			require.NoError(t, err)
 			require.Len(t, aw.Translations, 1)
 			assert.Equal(t, "最初のタイトル", aw.Translations[0].Title)
@@ -148,10 +215,8 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.False(t, inserted)
-			_, err = repo.GetArticleByID(ctx, "99")
-			assert.ErrorIs(t, err, port.ErrNotFound)
-			translations, err := repo.ListTranslationsByArticleIDs(ctx, []string{"01", "99"})
-			require.NoError(t, err)
+			assert.False(t, articleExists(t, ctx, "99"))
+			translations := fetchTranslationsByArticleIDs(t, ctx, []string{"01", "99"})
 			require.Len(t, translations, 1)
 			assert.Equal(t, "最初のタイトル", translations[0].Title)
 		})
@@ -161,7 +226,6 @@ func TestInsertArticleWithTranslation(t *testing.T) {
 func TestTranslation_UnsupportedLang(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t)
-	_ = seedWithJa(t, repo, "01", domain.StatusPending)
 
 	t.Run("未対応langの拒否", func(t *testing.T) {
 		t.Run("取込でfrの翻訳を渡すとき、ErrInvalidPersistedValueになり記事も保存されない", func(t *testing.T) {
@@ -173,29 +237,8 @@ func TestTranslation_UnsupportedLang(t *testing.T) {
 			_, err := repo.InsertArticleWithTranslation(ctx, article, "fr", "t", "s", "b")
 
 			assert.ErrorIs(t, err, port.ErrInvalidPersistedValue)
-			_, err = repo.GetArticleByID(ctx, "02")
-			assert.ErrorIs(t, err, port.ErrNotFound)
+			assert.False(t, articleExists(t, ctx, "02"))
 		})
-
-		upsertCases := []struct {
-			name string
-			lang string
-		}{
-			{
-				name: "UpsertTranslationにfrを渡すとき、ErrInvalidPersistedValueになる",
-				lang: "fr",
-			},
-			{
-				name: "UpsertTranslationに空langを渡すとき、ErrInvalidPersistedValueになる",
-				lang: "",
-			},
-		}
-		for _, tc := range upsertCases {
-			t.Run(tc.name, func(t *testing.T) {
-				err := repo.UpsertTranslation(ctx, "01", tc.lang, "t", "s", "b")
-				assert.ErrorIs(t, err, port.ErrInvalidPersistedValue)
-			})
-		}
 	})
 }
 
@@ -209,16 +252,16 @@ func TestListPublished(t *testing.T) {
 		Tags: []string{}, Status: domain.StatusPending,
 	}, domain.LangJa, "ja", "s", "b")
 	require.NoError(t, err)
-	require.NoError(t, repo.Publish(ctx, "ja-only", "alice@example.com", time.Now()))
+	applyPublish(t, ctx, "ja-only", "alice@example.com", time.Now())
 
-	// ja + en 両方 (en は管理 UI 経由で後追加される想定 → UpsertTranslation で入れる)
+	// ja + en 両方 (en は運用者が DB を直接更新して後追加される想定)
 	_, err = repo.InsertArticleWithTranslation(ctx, domain.Article{
 		ArticleID: "both", Source: "aws", SourceURL: "https://example.com/both",
 		Tags: []string{}, Status: domain.StatusPending,
 	}, domain.LangJa, "ja", "s", "b")
 	require.NoError(t, err)
-	require.NoError(t, repo.UpsertTranslation(ctx, "both", domain.LangEn, "en", "s", "b"))
-	require.NoError(t, repo.Publish(ctx, "both", "alice@example.com", time.Now()))
+	insertTranslation(t, ctx, "both", domain.LangEn, "en", "s", "b")
+	applyPublish(t, ctx, "both", "alice@example.com", time.Now())
 
 	t.Run("公開記事一覧の取得", func(t *testing.T) {
 		cases := []struct {
@@ -354,7 +397,7 @@ func TestListPublished(t *testing.T) {
 				seed: func(t *testing.T, repo *postgres.NewsRepository) {
 					seedPublishedAt(t, ctx, repo, "TST-0001", fixedNow)
 					seedPublishedAt(t, ctx, repo, "TST-0002", fixedNow)
-					require.NoError(t, repo.Reject(ctx, "TST-0002", "seed@example.com", fixedNow.Add(1*time.Hour)))
+					applyReject(t, ctx, "TST-0002", "seed@example.com", fixedNow.Add(1*time.Hour))
 				},
 				wantIDs: []string{"TST-0001"},
 			},
@@ -388,8 +431,8 @@ func TestGetPublishedByID(t *testing.T) {
 	_ = seedWithJa(t, repo, "published-ja", domain.StatusPublished)
 	// published + ja + en
 	_ = seedWithJa(t, repo, "published-both", domain.StatusPending)
-	require.NoError(t, repo.UpsertTranslation(ctx, "published-both", domain.LangEn, "en", "s", "b"))
-	require.NoError(t, repo.Publish(ctx, "published-both", "alice@example.com", time.Now()))
+	insertTranslation(t, ctx, "published-both", domain.LangEn, "en", "s", "b")
+	applyPublish(t, ctx, "published-both", "alice@example.com", time.Now())
 	// rejected + ja
 	_ = seedWithJa(t, repo, "rejected", domain.StatusRejected)
 
@@ -447,301 +490,6 @@ func TestGetPublishedByID(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				_, err := repo.GetPublishedByID(ctx, tc.id, tc.lang)
 				assert.ErrorIs(t, err, port.ErrNotFound)
-			})
-		}
-	})
-}
-
-func TestListArticles(t *testing.T) {
-	ctx := context.Background()
-	repo := newRepo(t)
-
-	_ = seedWithJa(t, repo, "p1", domain.StatusPending)
-	_ = seedWithJa(t, repo, "p2", domain.StatusPending)
-	_ = seedWithJa(t, repo, "pub", domain.StatusPublished)
-	_ = seedWithJa(t, repo, "rej", domain.StatusRejected)
-
-	t.Run("管理用記事一覧の取得", func(t *testing.T) {
-		cases := []struct {
-			name    string
-			limit   int
-			wantIDs []string
-		}{
-			{name: "limit=100のとき、ingested_at降順で全4件を返す", limit: 100, wantIDs: []string{"rej", "pub", "p2", "p1"}},
-			{name: "limit=2のとき、ingested_atが新しい2件に絞られる", limit: 2, wantIDs: []string{"rej", "pub"}},
-		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				items, err := repo.ListArticles(ctx, tc.limit)
-				require.NoError(t, err)
-
-				gotIDs := make([]string, len(items))
-				for i, item := range items {
-					gotIDs[i] = item.ArticleID
-				}
-				assert.Equal(t, tc.wantIDs, gotIDs)
-			})
-		}
-	})
-}
-
-func TestListTranslationsByArticleIDs(t *testing.T) {
-	ctx := context.Background()
-	repo := newRepo(t)
-
-	_ = seedWithJa(t, repo, "a1", domain.StatusPending)
-	require.NoError(t, repo.UpsertTranslation(ctx, "a1", domain.LangEn, "en", "s", "b"))
-	_ = seedWithJa(t, repo, "a2", domain.StatusPending)
-
-	t.Run("記事ID群からの翻訳取得", func(t *testing.T) {
-		cases := []struct {
-			name    string
-			ids     []string
-			wantLen int
-		}{
-			{name: "空入力のとき、0件を返す", ids: nil, wantLen: 0},
-			{name: "複数IDのとき、全翻訳 (a1のja+enとa2のjaで3件)を返す", ids: []string{"a1", "a2"}, wantLen: 3},
-		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				ts, err := repo.ListTranslationsByArticleIDs(ctx, tc.ids)
-				require.NoError(t, err)
-				assert.Len(t, ts, tc.wantLen)
-			})
-		}
-	})
-}
-
-func TestGetArticleByID(t *testing.T) {
-	ctx := context.Background()
-	repo := newRepo(t)
-
-	_ = seedWithJa(t, repo, "pend", domain.StatusPending)
-	_ = seedWithJa(t, repo, "rej", domain.StatusRejected)
-
-	t.Run("記事の取得", func(t *testing.T) {
-		cases := []struct {
-			name    string
-			id      string
-			wantErr error
-		}{
-			{
-				name:    "pending記事のとき、エラーにならない",
-				id:      "pend",
-				wantErr: nil,
-			},
-			{
-				name:    "rejected記事のとき、エラーにならない",
-				id:      "rej",
-				wantErr: nil,
-			},
-			{
-				name:    "非存在idのとき、ErrNotFoundになる",
-				id:      "ghost",
-				wantErr: port.ErrNotFound,
-			},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				_, err := repo.GetArticleByID(ctx, tc.id)
-				assert.ErrorIs(t, err, tc.wantErr)
-			})
-		}
-	})
-}
-
-func TestUpdateNotFound(t *testing.T) {
-	ctx := context.Background()
-	repo := newRepo(t)
-
-	t.Run("存在しない記事への更新", func(t *testing.T) {
-		cases := []struct {
-			name string
-			op   func() error
-		}{
-			{
-				name: "Publishで存在しない記事のとき、ErrNotFoundになる",
-				op:   func() error { return repo.Publish(ctx, "ghost", "x", fixedNow) },
-			},
-			{
-				name: "Rejectで存在しない記事のとき、ErrNotFoundになる",
-				op:   func() error { return repo.Reject(ctx, "ghost", "x", fixedNow) },
-			},
-			{
-				name: "UpsertTranslationで存在しない記事のとき、ErrNotFoundになる",
-				op:   func() error { return repo.UpsertTranslation(ctx, "ghost", domain.LangEn, "t", "s", "b") },
-			},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				err := tc.op()
-				assert.True(t, errors.Is(err, port.ErrNotFound))
-			})
-		}
-	})
-}
-
-func TestPublish(t *testing.T) {
-	type publishOp struct {
-		reviewer string
-		at       time.Time
-	}
-	first := fixedNow
-	second := fixedNow.Add(1 * time.Hour)
-
-	t.Run("記事の承認", func(t *testing.T) {
-		cases := []struct {
-			name            string
-			publishes       []publishOp
-			wantPublishedAt time.Time
-			wantReviewedAt  time.Time
-			wantReviewer    string
-		}{
-			{
-				name:            "初回承認のとき、published_at / reviewed_at / reviewerがnowにセットされる",
-				publishes:       []publishOp{{"alice@example.com", first}},
-				wantPublishedAt: first,
-				wantReviewedAt:  first,
-				wantReviewer:    "alice@example.com",
-			},
-			{
-				name:            "再承認のとき、published_at / reviewed_at / reviewerが最新値で上書きされる",
-				publishes:       []publishOp{{"alice@example.com", first}, {"bob@example.com", second}},
-				wantPublishedAt: second,
-				wantReviewedAt:  second,
-				wantReviewer:    "bob@example.com",
-			},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				ctx := context.Background()
-				repo := newRepo(t)
-				_ = seedWithJa(t, repo, "01", domain.StatusPending)
-				for _, op := range tc.publishes {
-					require.NoError(t, repo.Publish(ctx, "01", op.reviewer, op.at))
-				}
-
-				aw, err := fetchArticleWithTranslations(t, repo, "01")
-				require.NoError(t, err)
-				assert.Equal(t, domain.StatusPublished, aw.Article.Status)
-				require.NotNil(t, aw.Article.PublishedAt)
-				assert.True(t, aw.Article.PublishedAt.Equal(tc.wantPublishedAt))
-				require.NotNil(t, aw.Article.ReviewedAt)
-				assert.True(t, aw.Article.ReviewedAt.Equal(tc.wantReviewedAt))
-				require.NotNil(t, aw.Article.Reviewer)
-				assert.Equal(t, tc.wantReviewer, *aw.Article.Reviewer)
-			})
-		}
-	})
-}
-
-func TestReject(t *testing.T) {
-	ctx := context.Background()
-	repo := newRepo(t)
-	_ = seedWithJa(t, repo, "01", domain.StatusPending)
-
-	t.Run("記事の却下", func(t *testing.T) {
-		t.Run("承認後に却下すると、published_atは据え置きでreviewed_atが却下時刻になる", func(t *testing.T) {
-			pub := fixedNow
-			rej := fixedNow.Add(1 * time.Hour)
-			require.NoError(t, repo.Publish(ctx, "01", "alice@example.com", pub))
-			require.NoError(t, repo.Reject(ctx, "01", "bob@example.com", rej))
-
-			aw, err := fetchArticleWithTranslations(t, repo, "01")
-			require.NoError(t, err)
-			assert.Equal(t, domain.StatusRejected, aw.Article.Status)
-			require.NotNil(t, aw.Article.PublishedAt)
-			assert.True(t, aw.Article.PublishedAt.Equal(pub), "却下でも published_at は承認時刻のまま")
-			require.NotNil(t, aw.Article.ReviewedAt)
-			assert.True(t, aw.Article.ReviewedAt.Equal(rej))
-		})
-	})
-}
-
-func TestUpsertTranslation(t *testing.T) {
-	type opArgs struct {
-		lang, title, summary, body string
-	}
-	noPreOp := func(_ *testing.T, _ context.Context, _ *postgres.NewsRepository) {}
-
-	t.Run("翻訳のUPSERT", func(t *testing.T) {
-		cases := []struct {
-			name        string
-			preOp       func(t *testing.T, ctx context.Context, repo *postgres.NewsRepository)
-			preSleep    time.Duration
-			op          opArgs
-			assertAfter func(t *testing.T, before, after *domain.ArticleWithTranslations, op opArgs)
-		}{
-			{
-				name:  "未存在langのとき、INSERTで追加される (en)",
-				preOp: noPreOp,
-				op:    opArgs{domain.LangEn, "en-title", "en-summary", "en-body"},
-				assertAfter: func(t *testing.T, _, after *domain.ArticleWithTranslations, op opArgs) {
-					tr := translationByLang(t, after, op.lang)
-					assert.Equal(t, op.title, tr.Title)
-					assert.Equal(t, op.summary, tr.Summary)
-					assert.Equal(t, op.body, tr.Body)
-				},
-			},
-			{
-				name:  "既存langのとき、UPDATEで上書きされる (ja)",
-				preOp: noPreOp,
-				op:    opArgs{domain.LangJa, "updated", "updated-s", "updated-b"},
-				assertAfter: func(t *testing.T, _, after *domain.ArticleWithTranslations, op opArgs) {
-					tr := translationByLang(t, after, op.lang)
-					assert.Equal(t, op.title, tr.Title)
-					assert.Equal(t, op.summary, tr.Summary)
-					assert.Equal(t, op.body, tr.Body)
-				},
-			},
-			{
-				name:     "既存langをUPDATEするとき、triggerでtranslation.updated_atが進む",
-				preOp:    noPreOp,
-				preSleep: 5 * time.Millisecond,
-				op:       opArgs{domain.LangJa, "new", "new-s", "new-b"},
-				assertAfter: func(t *testing.T, before, after *domain.ArticleWithTranslations, _ opArgs) {
-					beforeJa := translationByLang(t, before, domain.LangJa)
-					afterJa := translationByLang(t, after, domain.LangJa)
-					assert.True(t, afterJa.UpdatedAt.After(beforeJa.UpdatedAt))
-				},
-			},
-			{
-				name: "翻訳をUPSERTしても、親記事のstatus / reviewed_at / reviewer / published_at / updated_atは不変",
-				// publish しておき reviewed_at / reviewer / published_at に値を入れた状態で観測する
-				preOp: func(t *testing.T, ctx context.Context, repo *postgres.NewsRepository) {
-					require.NoError(t, repo.Publish(ctx, "01", "alice@example.com", fixedNow))
-				},
-				preSleep: 10 * time.Millisecond,
-				op:       opArgs{domain.LangEn, "en-title", "en-summary", "en-body"},
-				assertAfter: func(t *testing.T, before, after *domain.ArticleWithTranslations, _ opArgs) {
-					assert.Equal(t, before.Article.Status, after.Article.Status)
-					assert.Equal(t, before.Article.Reviewer, after.Article.Reviewer)
-					assert.Equal(t, before.Article.ReviewedAt.UnixNano(), after.Article.ReviewedAt.UnixNano())
-					assert.Equal(t, before.Article.PublishedAt.UnixNano(), after.Article.PublishedAt.UnixNano())
-					assert.Equal(t, before.Article.UpdatedAt.UnixNano(), after.Article.UpdatedAt.UnixNano())
-				},
-			},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				ctx := context.Background()
-				repo := newRepo(t)
-				_ = seedWithJa(t, repo, "01", domain.StatusPending)
-				tc.preOp(t, ctx, repo)
-
-				before, err := fetchArticleWithTranslations(t, repo, "01")
-				require.NoError(t, err)
-
-				time.Sleep(tc.preSleep)
-				require.NoError(t, repo.UpsertTranslation(ctx, "01", tc.op.lang, tc.op.title, tc.op.summary, tc.op.body))
-
-				after, err := fetchArticleWithTranslations(t, repo, "01")
-				require.NoError(t, err)
-				tc.assertAfter(t, before, after, tc.op)
 			})
 		}
 	})
