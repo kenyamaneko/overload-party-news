@@ -14,7 +14,7 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// ListLimitMax は一覧 limit の上限 (FEATURE_SPEC.md)。
+// ListLimitMax は一覧 limit の上限。
 const ListLimitMax = 100
 
 var (

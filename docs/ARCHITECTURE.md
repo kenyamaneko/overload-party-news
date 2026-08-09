@@ -2,7 +2,7 @@
 
 本ドキュメントは **コードを読んでも一見しては分からない設計意図** だけを残す。実装詳細（フロー順序・状態遷移・エラー → HTTP ステータス変換・環境変数一覧）は各ファイルの実装とコメントを一次情報とする。
 
-サービス概要・起動手順は [../README.md](../README.md)、保証すべき振る舞いは [FEATURE_SPEC.md](FEATURE_SPEC.md)、エンドポイントは [../data/openapi.yaml](../data/openapi.yaml) (REST) と [../data/asyncapi.yaml](../data/asyncapi.yaml) (Pub/Sub)、テーブル定義は [DATA_DESIGN.md](DATA_DESIGN.md) を参照。
+サービス概要・起動手順は [../README.md](../README.md)、エンドポイントは [../data/openapi.yaml](../data/openapi.yaml) (REST) と [../data/asyncapi.yaml](../data/asyncapi.yaml) (Pub/Sub)、テーブル定義は [DATA_DESIGN.md](DATA_DESIGN.md) を参照。
 
 ## News の責務境界 (SSoT と書き込み権限)
 
@@ -54,7 +54,7 @@ push 受け口 (`/internal/v1/pubsub/news-article-collected`) は 2xx で ack、
 (overload-party-infra 側の subscription 設定で `max_delivery_attempts = 5` 到達後は dead letter topic に送られる)。
 
 - INSERT 成功 / 既存ヒット → 200
-- 必須フィールド欠落（§FEATURE_SPEC 3.1）→ 200 + warn ログ（再送されても結果が変わらない deterministic error）
+- 必須フィールド欠落 → 200 + warn ログ（再送されても結果が変わらない deterministic error）
 - push envelope 自体が不正、または `message.data` が base64 として復号できない → 400（dead letter 到達後に内容を確認できる）
 - DB 接続失敗 → 500（Pub/Sub 側リトライ）
 
