@@ -62,6 +62,7 @@ news スキーマはクラウドニュース記事の校閲状態と配信用コ
 - `lang` の列挙は ENUM ではなく VARCHAR を採用。news 側のコードで許容値を強制し、未知値はリクエストをエラー化（`ErrUnsupportedLang`）する
 - `status` も同様に VARCHAR。状態追加時の DDL 変更を避け、未知値を非公開扱いするフェイルセーフと組み合わせて柔軟性を確保
 - `article_id` は newsfeed 側で採番し PK として引き継ぐ。news 側で再採番すると `ON CONFLICT DO NOTHING` による重複検知が効かない
+- newsfeed が同じ記事を再送した場合、記事行の再送・取り直しは `ON CONFLICT DO NOTHING` で無視し UPDATE は行わない。校閲済みのタイトル・要約・本文を運用者以外の経路で上書きしないため
 - `article_id` / `source` の列幅は取り込み時に news 側のコードでも検査する。超過値は INSERT 前に不正イベントとして捨て、Pub/Sub の再配信が止まらなくなるのを防ぐ。コード側の上限値 (`domain.MaxArticleIDLength` / `domain.MaxSourceLength`) と DDL の drift は列幅テストが検出する
 - `reviewed_at` / `reviewer` は承認・却下のみ記録し、翻訳編集時刻は各翻訳行の `updated_at` で拾う
 - 編集者の履歴は記録しない（運用者少数前提）

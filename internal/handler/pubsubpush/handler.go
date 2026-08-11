@@ -37,6 +37,7 @@ func NewHandler(handle port.MessageHandler) *Handler {
 // Handle は push envelope を解析・復号し、既存の port.MessageHandler へ委譲する。
 func (h *Handler) Handle(c *gin.Context) {
 	var env envelope
+	// envelope の形式不正・復号不能は再配送しても解消しないため、200 で握りつぶさず 400 で dead letter に送り内容を確認できるようにする。
 	if err := c.ShouldBindJSON(&env); err != nil {
 		respondErr := fmt.Errorf("%w: %s", errMalformedEnvelope, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": respondErr.Error()})

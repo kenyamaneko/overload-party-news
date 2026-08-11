@@ -25,7 +25,7 @@ func NewArticleCollectedHandler(uc *ingest.Interactor) *ArticleCollectedHandler 
 // Handle は 1 メッセージの処理 entrypoint。adapter から MessageHandler として登録する。
 // 返り値 nil → ACK、non-nil → NACK の契約:
 //   - JSON デコード失敗: ACK (deterministic、再送無意味)
-//   - ingest.ErrInvalidEventPayload (必須フィールド欠け・列幅超過): ACK
+//   - ingest.ErrInvalidEventPayload (必須フィールド欠け・列幅超過): ACK (dead letter に送っても運用上得られる情報がないため)
 //   - 上記以外 (DB 障害等): NACK (Pub/Sub 側リトライ)
 func (h *ArticleCollectedHandler) Handle(ctx context.Context, data []byte) error {
 	var event apinews.ArticleCollectedEvent
