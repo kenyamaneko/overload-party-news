@@ -38,6 +38,7 @@ func NewNewsRepository(pool *pgxpool.Pool) *NewsRepository {
 // 記事が既存 (同一 article_id、または同一 source_url の別 article_id) なら inserted=false で何も挿入しない。
 // CHECK 制約違反 (未対応 lang) は ErrInvalidPersistedValue に変換し、記事側も挿入しない。
 func (r *NewsRepository) InsertArticleWithTranslation(ctx context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+	// 記事行と翻訳行の間に中間状態を作らないため、1 トランザクションで書く。
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin ingest transaction: %w", err)
