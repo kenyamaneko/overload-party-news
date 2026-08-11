@@ -40,13 +40,3 @@ make test     # Testcontainers でテスト実行（Docker 必須）
 アプリはコンテナ内で `go run` する。ソースを編集して `docker compose restart news` すれば、
 イメージを作り直さずに反映される。private module は host の module cache を読み取り専用でマウント
 して解決するため、`make run` は先に host 側で `go mod download` を実行する。
-
-## 公開パッケージ
-
-[packages/api-news/](packages/api-news/) に REST / Pub/Sub 契約型を公開している。
-SSoT は [data/openapi.yaml](data/openapi.yaml) (REST) と [data/asyncapi.yaml](data/asyncapi.yaml) (Pub/Sub)。
-spec を編集後に以下で `oapi-codegen` + `asyncapi-codegen` を呼び出して再生成する。
-
-```bash
-scripts/generate_types.sh
-```
