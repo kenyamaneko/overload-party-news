@@ -23,6 +23,7 @@ func validCollectedEventForSubscriber() apinews.ArticleCollectedEvent {
 		ArticleID: "article-id-valid-002",
 		Source:    "aws",
 		SourceURL: "https://example.com/articles/2",
+		Tags:      []string{"cloud", "release"},
 		Translations: []apinews.EventTranslation{
 			{Lang: "ja", Title: "タイトル", Summary: "要約", Body: "本文"},
 		},

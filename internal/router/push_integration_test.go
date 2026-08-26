@@ -315,6 +315,7 @@ func TestPushArticleCollectedPersistence(t *testing.T) {
 				ArticleID: "push-non-ja-lang-00001",
 				Source:    "aws",
 				SourceURL: "https://example.com/push/non-ja-lang",
+				Tags:      []string{},
 				Translations: []apinews.EventTranslation{
 					{Lang: "en", Title: "title", Summary: "summary", Body: "body"},
 				},
@@ -452,6 +453,7 @@ func TestPushArticleCollectedPersistence(t *testing.T) {
 				ArticleID: articleID,
 				Source:    "aws",
 				SourceURL: "https://example.com/push/article-id-27",
+				Tags:      []string{},
 				Translations: []apinews.EventTranslation{
 					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
 				},
@@ -471,6 +473,7 @@ func TestPushArticleCollectedPersistence(t *testing.T) {
 				ArticleID: "push-source-21-chars-01",
 				Source:    strings.Repeat("s", 21),
 				SourceURL: "https://example.com/push/source-21",
+				Tags:      []string{},
 				Translations: []apinews.EventTranslation{
 					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
 				},

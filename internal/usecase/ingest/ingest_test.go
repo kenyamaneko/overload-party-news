@@ -79,19 +79,6 @@ func TestIngestInteractorInsert(t *testing.T) {
 			assert.Nil(t, (*calls)[0].article.SourcePublishedAt)
 		})
 
-		t.Run("tagsが無いイベントでも、記事と翻訳が書き込み先に渡される", func(t *testing.T) {
-			event := validCollectedEvent()
-			event.Tags = nil
-			writer, calls := newRecordingWriter(true, nil)
-			uc := ingest.New(writer)
-
-			_, err := uc.Insert(context.Background(), event)
-
-			require.NoError(t, err)
-			require.Len(t, *calls, 1)
-			assert.Empty(t, (*calls)[0].article.Tags)
-		})
-
 		t.Run("article_idがちょうど26文字のとき、記事と翻訳が書き込み先に渡される", func(t *testing.T) {
 			event := validCollectedEvent()
 			event.ArticleID = strings.Repeat("a", 26)
@@ -202,6 +189,18 @@ func TestIngestInteractorInsert(t *testing.T) {
 		t.Run("source_urlが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
 			event := validCollectedEvent()
 			event.SourceURL = ""
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("tagsが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Tags = nil
 			writer, calls := newRecordingWriter(true, nil)
 			uc := ingest.New(writer)
 

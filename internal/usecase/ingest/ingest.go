@@ -58,6 +58,9 @@ func validateEvent(e apinews.ArticleCollectedEvent) error {
 	if e.SourceURL == "" {
 		return fmt.Errorf("%w: source_url is empty", ErrInvalidEventPayload)
 	}
+	if e.Tags == nil {
+		return fmt.Errorf("%w: tags is missing", ErrInvalidEventPayload)
+	}
 	if len(e.Translations) != 1 {
 		return fmt.Errorf("%w: translations must contain exactly 1 entry (ja), got %d", ErrInvalidEventPayload, len(e.Translations))
 	}
