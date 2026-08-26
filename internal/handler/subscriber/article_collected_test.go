@@ -130,7 +130,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.Empty(t, *calls)
 		})
 
-		t.Run("article_idが無いなど、取込可否判定で拒否されるイベントを処理すると、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
+		t.Run("article_idが空のとき、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			event.ArticleID = ""
 			data, err := json.Marshal(event)
@@ -143,7 +143,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.Empty(t, *calls)
 		})
 
-		t.Run("翻訳のsummaryが無いなど、取込可否判定で拒否されるイベントを処理すると、ログに記録される内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
+		t.Run("翻訳の要約が空のとき、ログに記録される内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			event.Translations = []apinews.EventTranslation{
 				{Lang: "ja", Title: "タイトル", Summary: "", Body: "本文"},
