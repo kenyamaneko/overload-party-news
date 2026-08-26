@@ -38,7 +38,7 @@ func envelopeBody(data string) string {
 }
 
 func TestPubsubPushHandlerHandle(t *testing.T) {
-	t.Run("Pub/Sub push envelopeの解析", func(t *testing.T) {
+	t.Run("[Pub/Sub pushハンドラ]Pub/Sub push envelopeの解析", func(t *testing.T) {
 		t.Run("envelopeが正しい形式で、後続処理が成功するとき、200を返し、後続処理にはbase64復号後の本文がそのまま渡る", func(t *testing.T) {
 			var got []byte
 			r := newPushEngine(func(_ context.Context, data []byte) error {
@@ -64,60 +64,46 @@ func TestPubsubPushHandlerHandle(t *testing.T) {
 			assert.Contains(t, w.Body.String(), handlerErr.Error())
 		})
 
-		t.Run("本文がJSONとして解析できないとき、400と、応答本文にmalformed envelopeを含む内容を返し、後続処理は実行されない", func(t *testing.T) {
-			called := false
-			r := newPushEngine(func(_ context.Context, _ []byte) error {
-				called = true
-				return nil
+		malformedTests := []struct {
+			name           string
+			body           string
+			wantErrContain string
+		}{
+			{
+				name:           "本文がJSONとして解析できないとき",
+				body:           "not valid json",
+				wantErrContain: "malformed envelope",
+			},
+			{
+				name:           "messageフィールドが無いとき",
+				body:           `{}`,
+				wantErrContain: "malformed envelope",
+			},
+			{
+				name:           "message.dataが空文字のとき",
+				body:           envelopeBody(""),
+				wantErrContain: "malformed envelope",
+			},
+			{
+				name:           "message.dataがbase64として復号できない値のとき",
+				body:           envelopeBody("not-valid-base64!!"),
+				wantErrContain: "undecodable data",
+			},
+		}
+		for _, tt := range malformedTests {
+			t.Run(tt.name+"、400と、応答本文に「"+tt.wantErrContain+"」を含む内容を返し、後続処理は実行されない", func(t *testing.T) {
+				called := false
+				r := newPushEngine(func(_ context.Context, _ []byte) error {
+					called = true
+					return nil
+				})
+
+				w := doPush(t, r, tt.body)
+
+				assert.Equal(t, http.StatusBadRequest, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantErrContain)
+				assert.False(t, called)
 			})
-
-			w := doPush(t, r, "not valid json")
-
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "malformed envelope")
-			assert.False(t, called)
-		})
-
-		t.Run("messageフィールドが無いとき、400と、応答本文にmalformed envelopeを含む内容を返し、後続処理は実行されない", func(t *testing.T) {
-			called := false
-			r := newPushEngine(func(_ context.Context, _ []byte) error {
-				called = true
-				return nil
-			})
-
-			w := doPush(t, r, `{}`)
-
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "malformed envelope")
-			assert.False(t, called)
-		})
-
-		t.Run("message.dataが空文字のとき、400と、応答本文にmalformed envelopeを含む内容を返し、後続処理は実行されない", func(t *testing.T) {
-			called := false
-			r := newPushEngine(func(_ context.Context, _ []byte) error {
-				called = true
-				return nil
-			})
-
-			w := doPush(t, r, envelopeBody(""))
-
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "malformed envelope")
-			assert.False(t, called)
-		})
-
-		t.Run("message.dataがbase64として復号できない値のとき、400と、応答本文にundecodable dataを含む内容を返し、後続処理は実行されない", func(t *testing.T) {
-			called := false
-			r := newPushEngine(func(_ context.Context, _ []byte) error {
-				called = true
-				return nil
-			})
-
-			w := doPush(t, r, envelopeBody("not-valid-base64!!"))
-
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "undecodable data")
-			assert.False(t, called)
-		})
+		}
 	})
 }

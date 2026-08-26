@@ -39,7 +39,7 @@ func acceptingVerifier() *internalauth.MockVerifier {
 }
 
 func TestNewPublic(t *testing.T) {
-	t.Run("公開ルータの配線", func(t *testing.T) {
+	t.Run("[公開ルータ]公開ルータの配線", func(t *testing.T) {
 		t.Run("GET /healthは認証ヘッダが無くても200を返す", func(t *testing.T) {
 			r := newTestPublicRouter(t, &port.MockNewsRepo{}, acceptingVerifier(), func(context.Context, []byte) error { return nil })
 
@@ -50,27 +50,25 @@ func TestNewPublic(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code)
 		})
 
-		t.Run("GET /api/v1/newsに認証ヘッダを付けずにリクエストすると、401と、応答本文にheader is requiredを含む内容を返す", func(t *testing.T) {
-			r := newTestPublicRouter(t, &port.MockNewsRepo{}, acceptingVerifier(), func(context.Context, []byte) error { return nil })
+		missingHeaderTests := []struct {
+			name   string
+			target string
+		}{
+			{"GET /api/v1/newsに認証ヘッダを付けずにリクエストすると", "/api/v1/news?lang=ja&limit=10"},
+			{"GET /api/v1/news/{articleId}に認証ヘッダを付けずにリクエストすると", "/api/v1/news/article-001?lang=ja"},
+		}
+		for _, tt := range missingHeaderTests {
+			t.Run(tt.name+"、401と、応答本文にheader is requiredを含む内容を返す", func(t *testing.T) {
+				r := newTestPublicRouter(t, &port.MockNewsRepo{}, acceptingVerifier(), func(context.Context, []byte) error { return nil })
 
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/news?lang=ja&limit=10", nil)
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, req)
+				req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+				w := httptest.NewRecorder()
+				r.ServeHTTP(w, req)
 
-			assert.Equal(t, http.StatusUnauthorized, w.Code)
-			assert.Contains(t, w.Body.String(), "header is required")
-		})
-
-		t.Run("GET /api/v1/news/{articleId}に認証ヘッダを付けずにリクエストすると、401と、応答本文にheader is requiredを含む内容を返す", func(t *testing.T) {
-			r := newTestPublicRouter(t, &port.MockNewsRepo{}, acceptingVerifier(), func(context.Context, []byte) error { return nil })
-
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/news/article-001?lang=ja", nil)
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, req)
-
-			assert.Equal(t, http.StatusUnauthorized, w.Code)
-			assert.Contains(t, w.Body.String(), "header is required")
-		})
+				assert.Equal(t, http.StatusUnauthorized, w.Code)
+				assert.Contains(t, w.Body.String(), "header is required")
+			})
+		}
 
 		t.Run("認証ヘッダを付けてリクエストしたが検証に失敗するとき、401と、応答本文にinvalid internal auth tokenを含む内容を返す", func(t *testing.T) {
 			verifier := &internalauth.MockVerifier{
@@ -192,36 +190,25 @@ func recordAttr(t *testing.T, record slog.Record, key string) (string, bool) {
 }
 
 func TestNewRequestLogger(t *testing.T) {
-	t.Run("リクエストログの重大度分類", func(t *testing.T) {
-		t.Run("応答ステータスが200のとき、INFOレベルで記録される", func(t *testing.T) {
-			record := captureRequestLog(t, http.StatusOK)
+	t.Run("[リクエストログ]リクエストログの重大度分類", func(t *testing.T) {
+		severityTests := []struct {
+			name      string
+			status    int
+			wantLevel slog.Level
+		}{
+			{"応答ステータスが200のとき、INFOレベルで記録される", http.StatusOK, slog.LevelInfo},
+			{"応答ステータスが399のとき、INFOレベルで記録される", 399, slog.LevelInfo},
+			{"応答ステータスが400のとき、WARNレベルで記録される", http.StatusBadRequest, slog.LevelWarn},
+			{"応答ステータスが499のとき、WARNレベルで記録される", 499, slog.LevelWarn},
+			{"応答ステータスが500のとき、ERRORレベルで記録される", http.StatusInternalServerError, slog.LevelError},
+		}
+		for _, tt := range severityTests {
+			t.Run(tt.name, func(t *testing.T) {
+				record := captureRequestLog(t, tt.status)
 
-			assert.Equal(t, slog.LevelInfo, record.Level)
-		})
-
-		t.Run("応答ステータスが399のとき、INFOレベルで記録される", func(t *testing.T) {
-			record := captureRequestLog(t, 399)
-
-			assert.Equal(t, slog.LevelInfo, record.Level)
-		})
-
-		t.Run("応答ステータスが400のとき、WARNレベルで記録される", func(t *testing.T) {
-			record := captureRequestLog(t, http.StatusBadRequest)
-
-			assert.Equal(t, slog.LevelWarn, record.Level)
-		})
-
-		t.Run("応答ステータスが499のとき、WARNレベルで記録される", func(t *testing.T) {
-			record := captureRequestLog(t, 499)
-
-			assert.Equal(t, slog.LevelWarn, record.Level)
-		})
-
-		t.Run("応答ステータスが500のとき、ERRORレベルで記録される", func(t *testing.T) {
-			record := captureRequestLog(t, http.StatusInternalServerError)
-
-			assert.Equal(t, slog.LevelError, record.Level)
-		})
+				assert.Equal(t, tt.wantLevel, record.Level)
+			})
+		}
 
 		t.Run("記録される内容に、リクエストのHTTPメソッド・パス・応答ステータスが含まれる", func(t *testing.T) {
 			record := captureRequestLog(t, http.StatusOK)

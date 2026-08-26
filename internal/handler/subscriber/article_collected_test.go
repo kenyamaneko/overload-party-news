@@ -30,11 +30,16 @@ func validCollectedEventForSubscriber() apinews.ArticleCollectedEvent {
 	}
 }
 
-func newHandlerWithRecordingWriter(inserted bool, err error) (*subscriber.ArticleCollectedHandler, *[]domain.Article) {
-	var calls []domain.Article
+type recordedInsert struct {
+	article                    domain.Article
+	lang, title, summary, body string
+}
+
+func newHandlerWithRecordingWriter(inserted bool, err error) (*subscriber.ArticleCollectedHandler, *[]recordedInsert) {
+	var calls []recordedInsert
 	writer := &port.MockNewsRepo{
-		InsertArticleWithTranslationFn: func(_ context.Context, article domain.Article, _, _, _, _ string) (bool, error) {
-			calls = append(calls, article)
+		InsertArticleWithTranslationFn: func(_ context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+			calls = append(calls, recordedInsert{article: article, lang: lang, title: title, summary: summary, body: body})
 			return inserted, err
 		},
 	}
@@ -89,8 +94,8 @@ func recordAttr(t *testing.T, record slog.Record, key string) (string, bool) {
 }
 
 func TestArticleCollectedHandlerHandle(t *testing.T) {
-	t.Run("Pub/Sub購読ハンドラのack/nack判定", func(t *testing.T) {
-		t.Run("取込可能な新規イベントを処理すると、記事と翻訳が1回だけ書き込み先に渡り、エラーを返さない", func(t *testing.T) {
+	t.Run("[記事収集購読ハンドラ]Pub/Sub購読ハンドラのack/nack判定", func(t *testing.T) {
+		t.Run("取込可能な新規イベントを受け取ると、記事と翻訳が1回だけ書き込み先に渡り、エラーを返さない", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			data, err := json.Marshal(event)
 			require.NoError(t, err)
@@ -99,10 +104,16 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			handleErr := h.Handle(context.Background(), data)
 
 			assert.NoError(t, handleErr)
-			assert.Len(t, *calls, 1)
+			require.Len(t, *calls, 1)
+			got := (*calls)[0]
+			assert.Equal(t, event.ArticleID, got.article.ArticleID)
+			assert.Equal(t, event.Translations[0].Lang, got.lang)
+			assert.Equal(t, event.Translations[0].Title, got.title)
+			assert.Equal(t, event.Translations[0].Summary, got.summary)
+			assert.Equal(t, event.Translations[0].Body, got.body)
 		})
 
-		t.Run("取込可能だが既に取り込み済みのイベントを処理すると、エラーを返さない", func(t *testing.T) {
+		t.Run("取込可能だが既に取り込み済みのイベントを受け取ると、エラーを返さない", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			data, err := json.Marshal(event)
 			require.NoError(t, err)
@@ -113,38 +124,41 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.NoError(t, handleErr)
 		})
 
-		t.Run("本文がJSONとして解析できないデータを処理すると、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
-			h, calls := newHandlerWithRecordingWriter(true, nil)
+		rejectedTests := []struct {
+			name      string
+			buildData func(t *testing.T) []byte
+		}{
+			{
+				name:      "本文がJSONとして解析できないデータを受け取ると",
+				buildData: func(*testing.T) []byte { return []byte("not valid json") },
+			},
+			{
+				name:      "空のデータを受け取ると",
+				buildData: func(*testing.T) []byte { return []byte("") },
+			},
+			{
+				name: "article_idが空のイベントを受け取ると",
+				buildData: func(t *testing.T) []byte {
+					event := validCollectedEventForSubscriber()
+					event.ArticleID = ""
+					data, err := json.Marshal(event)
+					require.NoError(t, err)
+					return data
+				},
+			},
+		}
+		for _, tt := range rejectedTests {
+			t.Run(tt.name+"、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
+				h, calls := newHandlerWithRecordingWriter(true, nil)
 
-			handleErr := h.Handle(context.Background(), []byte("not valid json"))
+				handleErr := h.Handle(context.Background(), tt.buildData(t))
 
-			assert.NoError(t, handleErr)
-			assert.Empty(t, *calls)
-		})
+				assert.NoError(t, handleErr)
+				assert.Empty(t, *calls)
+			})
+		}
 
-		t.Run("空のデータを処理すると、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
-			h, calls := newHandlerWithRecordingWriter(true, nil)
-
-			handleErr := h.Handle(context.Background(), []byte(""))
-
-			assert.NoError(t, handleErr)
-			assert.Empty(t, *calls)
-		})
-
-		t.Run("article_idが空のとき、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
-			event := validCollectedEventForSubscriber()
-			event.ArticleID = ""
-			data, err := json.Marshal(event)
-			require.NoError(t, err)
-			h, calls := newHandlerWithRecordingWriter(true, nil)
-
-			handleErr := h.Handle(context.Background(), data)
-
-			assert.NoError(t, handleErr)
-			assert.Empty(t, *calls)
-		})
-
-		t.Run("翻訳の要約が空のとき、ログに記録される内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
+		t.Run("翻訳の要約が空のペイロードを拒否したとき、ログの記録内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			event.Translations = []apinews.EventTranslation{
 				{Lang: "ja", Title: "タイトル", Summary: "", Body: "本文"},
@@ -158,18 +172,13 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 				require.NoError(t, handleErr)
 			})
 
-			require.NotEmpty(t, handler.records)
-			found := false
-			for _, record := range handler.records {
-				if value, ok := recordAttr(t, record, "article_id"); ok && value == event.ArticleID {
-					found = true
-					break
-				}
-			}
-			assert.True(t, found, "ログにarticle_idが記録されていること")
+			require.Len(t, handler.records, 1)
+			articleID, ok := recordAttr(t, handler.records[0], "article_id")
+			require.True(t, ok)
+			assert.Equal(t, event.ArticleID, articleID)
 		})
 
-		t.Run("書き込み先がエラーを返すイベントを処理すると、そのエラーがそのまま呼び出し元に返る", func(t *testing.T) {
+		t.Run("有効なイベントを受け取り、書き込み先がエラーを返すとき、そのエラーがそのまま呼び出し元に返る", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			data, err := json.Marshal(event)
 			require.NoError(t, err)

@@ -19,7 +19,7 @@ func setValidEnv(t *testing.T) {
 }
 
 func TestConfigFromEnv(t *testing.T) {
-	t.Run("起動時設定の読み込み", func(t *testing.T) {
+	t.Run("[起動設定]起動時設定の読み込み", func(t *testing.T) {
 		t.Run("ENV・INTERNAL_PORT・DATABASE_CONN・DATABASE_IAM_AUTH_ENABLED・INTERNAL_AUTH_PUBLIC_KEYが全て有効な値のとき、設定の構築に成功する", func(t *testing.T) {
 			setValidEnv(t)
 
@@ -28,23 +28,23 @@ func TestConfigFromEnv(t *testing.T) {
 			assert.NoError(t, err)
 		})
 
-		t.Run("ENVがstagingのときも、設定の構築に成功する", func(t *testing.T) {
-			setValidEnv(t)
-			t.Setenv("ENV", "staging")
+		envSuccessTests := []struct {
+			name string
+			env  string
+		}{
+			{"ENVがstagingのときも、設定の構築に成功する", "staging"},
+			{"ENVがproductionのときも、設定の構築に成功する", "production"},
+		}
+		for _, tt := range envSuccessTests {
+			t.Run(tt.name, func(t *testing.T) {
+				setValidEnv(t)
+				t.Setenv("ENV", tt.env)
 
-			_, err := config.FromEnv()
+				_, err := config.FromEnv()
 
-			assert.NoError(t, err)
-		})
-
-		t.Run("ENVがproductionのときも、設定の構築に成功する", func(t *testing.T) {
-			setValidEnv(t)
-			t.Setenv("ENV", "production")
-
-			_, err := config.FromEnv()
-
-			assert.NoError(t, err)
-		})
+				assert.NoError(t, err)
+			})
+		}
 
 		t.Run("DATABASE_IAM_AUTH_ENABLEDがtrueでCLOUDSQL_CONNECTION_NAMEも指定されているとき、設定の構築に成功する", func(t *testing.T) {
 			setValidEnv(t)

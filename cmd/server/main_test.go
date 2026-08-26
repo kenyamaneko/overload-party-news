@@ -40,8 +40,8 @@ func newTestPublicServer(t *testing.T, listFn func(context.Context, string, int)
 }
 
 func TestServe(t *testing.T) {
-	t.Run("HTTPサーバの起動・停止", func(t *testing.T) {
-		t.Run("サーバ起動中は、公開APIへのリクエスト(認証成功・記事取得成功のケース)が200を返す", func(t *testing.T) {
+	t.Run("[プロセス起動]HTTPサーバの起動・停止", func(t *testing.T) {
+		t.Run("サーバ起動中に、認証と記事取得の両方が成功するリクエストを公開APIへ送ると、200を返す", func(t *testing.T) {
 			srv, ln := newTestPublicServer(t, func(context.Context, string, int) ([]domain.PublishedArticleSummary, error) {
 				return []domain.PublishedArticleSummary{}, nil
 			})
@@ -69,7 +69,7 @@ func TestServe(t *testing.T) {
 			}
 		})
 
-		t.Run("停止要求(コンテキストのキャンセル)を送ると、サーバはエラー無く停止する", func(t *testing.T) {
+		t.Run("停止要求を送ると、サーバはエラー無く停止する", func(t *testing.T) {
 			srv, ln := newTestPublicServer(t, func(context.Context, string, int) ([]domain.PublishedArticleSummary, error) {
 				return []domain.PublishedArticleSummary{}, nil
 			})
@@ -163,36 +163,39 @@ func decodeLastLogLine(t *testing.T, buf *bytes.Buffer) map[string]any {
 }
 
 func TestNewCloudLoggingHandler(t *testing.T) {
-	t.Run("Cloud Logging向けログ属性変換", func(t *testing.T) {
-		t.Run("Errorレベルで出力すると、severityがERRORになる", func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := newCloudLoggingLogger(&buf)
+	t.Run("[プロセス起動]Cloud Logging向けログ属性変換", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			logFn   func(*slog.Logger, string)
+			wantSev string
+		}{
+			{
+				name:    "Errorレベルで出力すると、severityがERRORになる",
+				logFn:   func(l *slog.Logger, msg string) { l.Error(msg) },
+				wantSev: "ERROR",
+			},
+			{
+				name:    "Warnレベルで出力すると、severityがWARNINGになる",
+				logFn:   func(l *slog.Logger, msg string) { l.Warn(msg) },
+				wantSev: "WARNING",
+			},
+			{
+				name:    "Infoレベルで出力すると、severityがINFOになる",
+				logFn:   func(l *slog.Logger, msg string) { l.Info(msg) },
+				wantSev: "INFO",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				logger := newCloudLoggingLogger(&buf)
 
-			logger.Error("error level message")
+				tt.logFn(logger, "level test message")
 
-			parsed := decodeLastLogLine(t, &buf)
-			assert.Equal(t, "ERROR", parsed["severity"])
-		})
-
-		t.Run("Warnレベルで出力すると、severityがWARNINGになる", func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := newCloudLoggingLogger(&buf)
-
-			logger.Warn("warn level message")
-
-			parsed := decodeLastLogLine(t, &buf)
-			assert.Equal(t, "WARNING", parsed["severity"])
-		})
-
-		t.Run("Infoレベルで出力すると、severityがINFOになる", func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := newCloudLoggingLogger(&buf)
-
-			logger.Info("info level message")
-
-			parsed := decodeLastLogLine(t, &buf)
-			assert.Equal(t, "INFO", parsed["severity"])
-		})
+				parsed := decodeLastLogLine(t, &buf)
+				assert.Equal(t, tt.wantSev, parsed["severity"])
+			})
+		}
 
 		t.Run("出力したメッセージの内容が、messageフィールドにそのまま入る", func(t *testing.T) {
 			var buf bytes.Buffer

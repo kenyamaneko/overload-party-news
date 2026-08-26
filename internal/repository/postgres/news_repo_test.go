@@ -43,7 +43,7 @@ func insertFixtureTranslation(t *testing.T, articleID, lang, title, summary, bod
 }
 
 func TestNewsRepositoryListPublished(t *testing.T) {
-	t.Run("公開記事の取得条件と並び順", func(t *testing.T) {
+	t.Run("[ニュースリポジトリ]公開記事の取得条件と並び順", func(t *testing.T) {
 		t.Run("一覧の取得", func(t *testing.T) {
 			t.Run("指定したlangの翻訳を持つ公開中の記事が複数あるとき、それらを返す", func(t *testing.T) {
 				pg.Truncate(t)
@@ -64,58 +64,56 @@ func TestNewsRepositoryListPublished(t *testing.T) {
 				assert.ElementsMatch(t, []string{"list-multi-001", "list-multi-002"}, gotIDs)
 			})
 
-			t.Run("公開中だが指定したlangの翻訳を持たない記事は、一覧から除外される", func(t *testing.T) {
-				pg.Truncate(t)
-				now := time.Now().UTC().Truncate(time.Second)
-				insertFixtureArticle(t, "list-no-lang-001", "aws", "https://example.com/list-no-lang-001", timePtr(now), timePtr(now))
-				insertFixtureTranslation(t, "list-no-lang-001", "en", "title-en", "summary-en", "body-en")
-				repo := postgres.NewNewsRepository(pg.Pool)
+			excludedFromListTests := []struct {
+				name  string
+				setup func(t *testing.T)
+			}{
+				{
+					name: "公開中だが指定したlangの翻訳を持たない記事は",
+					setup: func(t *testing.T) {
+						now := time.Now().UTC().Truncate(time.Second)
+						insertFixtureArticle(t, "list-no-lang-001", "aws", "https://example.com/list-no-lang-001", timePtr(now), timePtr(now))
+						insertFixtureTranslation(t, "list-no-lang-001", "en", "title-en", "summary-en", "body-en")
+					},
+				},
+				{
+					name: "未校閲(承認も却下もされていない)の記事は",
+					setup: func(t *testing.T) {
+						insertFixtureArticle(t, "list-unreviewed-001", "aws", "https://example.com/list-unreviewed-001", nil, nil)
+						insertFixtureTranslation(t, "list-unreviewed-001", "ja", "title", "summary", "body")
+					},
+				},
+				{
+					name: "校閲済みだが公開日時が設定されていない記事は",
+					setup: func(t *testing.T) {
+						now := time.Now().UTC().Truncate(time.Second)
+						insertFixtureArticle(t, "list-no-published-at-001", "aws", "https://example.com/list-no-published-at-001", timePtr(now), nil)
+						insertFixtureTranslation(t, "list-no-published-at-001", "ja", "title", "summary", "body")
+					},
+				},
+				{
+					name: "公開後に却下された(公開日時が校閲日時より前になった)記事は",
+					setup: func(t *testing.T) {
+						now := time.Now().UTC().Truncate(time.Second)
+						reviewedAt := now
+						publishedAt := now.Add(-time.Hour)
+						insertFixtureArticle(t, "list-rejected-001", "aws", "https://example.com/list-rejected-001", timePtr(reviewedAt), timePtr(publishedAt))
+						insertFixtureTranslation(t, "list-rejected-001", "ja", "title", "summary", "body")
+					},
+				},
+			}
+			for _, tt := range excludedFromListTests {
+				t.Run(tt.name+"、一覧から除外される", func(t *testing.T) {
+					pg.Truncate(t)
+					tt.setup(t)
+					repo := postgres.NewNewsRepository(pg.Pool)
 
-				got, err := repo.ListPublished(context.Background(), "ja", 10)
+					got, err := repo.ListPublished(context.Background(), "ja", 10)
 
-				require.NoError(t, err)
-				assert.Empty(t, got)
-			})
-
-			t.Run("未校閲(承認も却下もされていない)の記事は、一覧から除外される", func(t *testing.T) {
-				pg.Truncate(t)
-				insertFixtureArticle(t, "list-unreviewed-001", "aws", "https://example.com/list-unreviewed-001", nil, nil)
-				insertFixtureTranslation(t, "list-unreviewed-001", "ja", "title", "summary", "body")
-				repo := postgres.NewNewsRepository(pg.Pool)
-
-				got, err := repo.ListPublished(context.Background(), "ja", 10)
-
-				require.NoError(t, err)
-				assert.Empty(t, got)
-			})
-
-			t.Run("校閲済みだが公開日時が設定されていない記事は、一覧から除外される", func(t *testing.T) {
-				pg.Truncate(t)
-				now := time.Now().UTC().Truncate(time.Second)
-				insertFixtureArticle(t, "list-no-published-at-001", "aws", "https://example.com/list-no-published-at-001", timePtr(now), nil)
-				insertFixtureTranslation(t, "list-no-published-at-001", "ja", "title", "summary", "body")
-				repo := postgres.NewNewsRepository(pg.Pool)
-
-				got, err := repo.ListPublished(context.Background(), "ja", 10)
-
-				require.NoError(t, err)
-				assert.Empty(t, got)
-			})
-
-			t.Run("公開後に却下された(公開日時が校閲日時より前になった)記事は、一覧から除外される", func(t *testing.T) {
-				pg.Truncate(t)
-				now := time.Now().UTC().Truncate(time.Second)
-				reviewedAt := now
-				publishedAt := now.Add(-time.Hour)
-				insertFixtureArticle(t, "list-rejected-001", "aws", "https://example.com/list-rejected-001", timePtr(reviewedAt), timePtr(publishedAt))
-				insertFixtureTranslation(t, "list-rejected-001", "ja", "title", "summary", "body")
-				repo := postgres.NewNewsRepository(pg.Pool)
-
-				got, err := repo.ListPublished(context.Background(), "ja", 10)
-
-				require.NoError(t, err)
-				assert.Empty(t, got)
-			})
+					require.NoError(t, err)
+					assert.Empty(t, got)
+				})
+			}
 
 			t.Run("承認直後(公開日時と校閲日時が同時刻)の記事は、一覧に含まれる", func(t *testing.T) {
 				pg.Truncate(t)
@@ -221,51 +219,56 @@ func TestNewsRepositoryListPublished(t *testing.T) {
 				assert.Equal(t, "https://example.com/detail-found-001", got.SourceURL)
 			})
 
-			t.Run("指定した記事が公開中だが、指定したlangの翻訳を持たないとき、見つからない扱いになる", func(t *testing.T) {
-				pg.Truncate(t)
-				now := time.Now().UTC().Truncate(time.Second)
-				insertFixtureArticle(t, "detail-no-lang-001", "aws", "https://example.com/detail-no-lang-001", timePtr(now), timePtr(now))
-				insertFixtureTranslation(t, "detail-no-lang-001", "en", "title-en", "summary-en", "body-en")
-				repo := postgres.NewNewsRepository(pg.Pool)
+			notFoundTests := []struct {
+				name      string
+				articleID string
+				setup     func(t *testing.T, articleID string)
+			}{
+				{
+					name:      "指定した記事が公開中だが、指定したlangの翻訳を持たないとき",
+					articleID: "detail-no-lang-001",
+					setup: func(t *testing.T, articleID string) {
+						now := time.Now().UTC().Truncate(time.Second)
+						insertFixtureArticle(t, articleID, "aws", "https://example.com/"+articleID, timePtr(now), timePtr(now))
+						insertFixtureTranslation(t, articleID, "en", "title-en", "summary-en", "body-en")
+					},
+				},
+				{
+					name:      "指定した記事が未校閲のとき",
+					articleID: "detail-unreviewed-001",
+					setup: func(t *testing.T, articleID string) {
+						insertFixtureArticle(t, articleID, "aws", "https://example.com/"+articleID, nil, nil)
+						insertFixtureTranslation(t, articleID, "ja", "title", "summary", "body")
+					},
+				},
+				{
+					name:      "指定した記事が却下されているとき",
+					articleID: "detail-rejected-001",
+					setup: func(t *testing.T, articleID string) {
+						now := time.Now().UTC().Truncate(time.Second)
+						reviewedAt := now
+						publishedAt := now.Add(-time.Hour)
+						insertFixtureArticle(t, articleID, "aws", "https://example.com/"+articleID, timePtr(reviewedAt), timePtr(publishedAt))
+						insertFixtureTranslation(t, articleID, "ja", "title", "summary", "body")
+					},
+				},
+				{
+					name:      "指定したarticle_idの記事が存在しないとき",
+					articleID: "detail-does-not-exist",
+					setup:     func(t *testing.T, articleID string) {},
+				},
+			}
+			for _, tt := range notFoundTests {
+				t.Run(tt.name+"、見つからない扱いになる", func(t *testing.T) {
+					pg.Truncate(t)
+					tt.setup(t, tt.articleID)
+					repo := postgres.NewNewsRepository(pg.Pool)
 
-				_, err := repo.GetPublishedByID(context.Background(), "detail-no-lang-001", "ja")
+					_, err := repo.GetPublishedByID(context.Background(), tt.articleID, "ja")
 
-				assert.ErrorIs(t, err, port.ErrNotFound)
-			})
-
-			t.Run("指定した記事が未校閲のとき、見つからない扱いになる", func(t *testing.T) {
-				pg.Truncate(t)
-				insertFixtureArticle(t, "detail-unreviewed-001", "aws", "https://example.com/detail-unreviewed-001", nil, nil)
-				insertFixtureTranslation(t, "detail-unreviewed-001", "ja", "title", "summary", "body")
-				repo := postgres.NewNewsRepository(pg.Pool)
-
-				_, err := repo.GetPublishedByID(context.Background(), "detail-unreviewed-001", "ja")
-
-				assert.ErrorIs(t, err, port.ErrNotFound)
-			})
-
-			t.Run("指定した記事が却下されているとき、見つからない扱いになる", func(t *testing.T) {
-				pg.Truncate(t)
-				now := time.Now().UTC().Truncate(time.Second)
-				reviewedAt := now
-				publishedAt := now.Add(-time.Hour)
-				insertFixtureArticle(t, "detail-rejected-001", "aws", "https://example.com/detail-rejected-001", timePtr(reviewedAt), timePtr(publishedAt))
-				insertFixtureTranslation(t, "detail-rejected-001", "ja", "title", "summary", "body")
-				repo := postgres.NewNewsRepository(pg.Pool)
-
-				_, err := repo.GetPublishedByID(context.Background(), "detail-rejected-001", "ja")
-
-				assert.ErrorIs(t, err, port.ErrNotFound)
-			})
-
-			t.Run("指定したarticle_idの記事が存在しないとき、見つからない扱いになる", func(t *testing.T) {
-				pg.Truncate(t)
-				repo := postgres.NewNewsRepository(pg.Pool)
-
-				_, err := repo.GetPublishedByID(context.Background(), "detail-does-not-exist", "ja")
-
-				assert.ErrorIs(t, err, port.ErrNotFound)
-			})
+					assert.ErrorIs(t, err, port.ErrNotFound)
+				})
+			}
 		})
 	})
 }

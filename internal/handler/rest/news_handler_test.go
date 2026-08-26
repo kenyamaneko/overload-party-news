@@ -38,7 +38,7 @@ func doGet(t *testing.T, r *gin.Engine, target string) *httptest.ResponseRecorde
 }
 
 func TestNewsHandlerList(t *testing.T) {
-	t.Run("ニュース一覧の取得", func(t *testing.T) {
+	t.Run("[公開ニュースAPI]ニュース一覧の取得", func(t *testing.T) {
 		t.Run("langにja、limitに10を指定し、取得元が0件を返すとき、200と空配列のarticlesを返す(nullにならない)", func(t *testing.T) {
 			repo := &port.MockNewsRepo{
 				ListPublishedFn: func(_ context.Context, _ string, _ int) ([]domain.PublishedArticleSummary, error) {
@@ -175,7 +175,7 @@ func TestNewsHandlerList(t *testing.T) {
 }
 
 func TestNewsHandlerGetDetail(t *testing.T) {
-	t.Run("ニュース詳細の取得", func(t *testing.T) {
+	t.Run("[公開ニュースAPI]ニュース詳細の取得", func(t *testing.T) {
 		t.Run("指定した記事が存在し取得できるとき、200を返し、応答に詳細項目が含まれる", func(t *testing.T) {
 			published := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 			repo := &port.MockNewsRepo{
@@ -211,25 +211,33 @@ func TestNewsHandlerGetDetail(t *testing.T) {
 			assert.Contains(t, body, "published_at")
 		})
 
-		t.Run("langを指定しないとき、400と、応答本文にlang is requiredを含む内容を返す", func(t *testing.T) {
-			repo := &port.MockNewsRepo{}
-			r := newNewsEngine(repo)
+		badLangTests := []struct {
+			name           string
+			target         string
+			wantErrContain string
+		}{
+			{
+				name:           "langを指定しないとき",
+				target:         "/api/v1/news/article-detail-001",
+				wantErrContain: "lang is required",
+			},
+			{
+				name:           "langに対応外の値を指定したとき",
+				target:         "/api/v1/news/article-detail-001?lang=fr",
+				wantErrContain: "unsupported lang",
+			},
+		}
+		for _, tt := range badLangTests {
+			t.Run(tt.name+"、400と、応答本文に"+tt.wantErrContain+"を含む内容を返す", func(t *testing.T) {
+				repo := &port.MockNewsRepo{}
+				r := newNewsEngine(repo)
 
-			w := doGet(t, r, "/api/v1/news/article-detail-001")
+				w := doGet(t, r, tt.target)
 
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "lang is required")
-		})
-
-		t.Run("langに対応外の値を指定したとき、400と、応答本文にunsupported langを含む内容を返す", func(t *testing.T) {
-			repo := &port.MockNewsRepo{}
-			r := newNewsEngine(repo)
-
-			w := doGet(t, r, "/api/v1/news/article-detail-001?lang=fr")
-
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "unsupported lang")
-		})
+				assert.Equal(t, http.StatusBadRequest, w.Code)
+				assert.Contains(t, w.Body.String(), tt.wantErrContain)
+			})
+		}
 
 		t.Run("指定した記事が見つからないとき、404と、応答本文にarticle not foundを含む内容を返す", func(t *testing.T) {
 			repo := &port.MockNewsRepo{

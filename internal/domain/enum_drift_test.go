@@ -35,7 +35,7 @@ func readOpenAPISchemas(t *testing.T) openapiSchemas {
 }
 
 func TestSupportedEnumsMatchOpenAPIContract(t *testing.T) {
-	t.Run("対応言語コード・ソース種別の集合とdata/openapi.yamlの整合", func(t *testing.T) {
+	t.Run("[ニュースドメインモデル]対応言語コード・ソース種別の集合とdata/openapi.yamlの整合", func(t *testing.T) {
 		t.Run("対応言語コードの集合が、data/openapi.yamlのLang enumの値集合と一致する", func(t *testing.T) {
 			doc := readOpenAPISchemas(t)
 
