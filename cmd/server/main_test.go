@@ -69,7 +69,7 @@ func TestServe(t *testing.T) {
 			}
 		})
 
-		t.Run("停止要求(コンテキストのキャンセル)を送ると、serveの呼び出しはエラー無く終了する", func(t *testing.T) {
+		t.Run("停止要求(コンテキストのキャンセル)を送ると、サーバはエラー無く停止する", func(t *testing.T) {
 			srv, ln := newTestPublicServer(t, func(context.Context, string, int) ([]domain.PublishedArticleSummary, error) {
 				return []domain.PublishedArticleSummary{}, nil
 			})
@@ -89,7 +89,7 @@ func TestServe(t *testing.T) {
 			}
 		})
 
-		t.Run("停止要求を送った時点で応答に時間のかかる処理中のリクエストがあるとき、そのリクエストは打ち切られずに200の応答を最後まで受け取り、その後にserveの呼び出しがエラー無く終了する", func(t *testing.T) {
+		t.Run("停止要求を送った時点で応答に時間のかかる処理中のリクエストがあるとき、そのリクエストは打ち切られずに200の応答を最後まで受け取り、その後にサーバはエラー無く停止する", func(t *testing.T) {
 			started := make(chan struct{})
 			srv, ln := newTestPublicServer(t, func(context.Context, string, int) ([]domain.PublishedArticleSummary, error) {
 				close(started)

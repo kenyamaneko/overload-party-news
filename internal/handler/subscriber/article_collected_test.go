@@ -89,7 +89,7 @@ func recordAttr(t *testing.T, record slog.Record, key string) (string, bool) {
 
 func TestArticleCollectedHandlerHandle(t *testing.T) {
 	t.Run("Pub/Sub購読ハンドラのack/nack判定", func(t *testing.T) {
-		t.Run("取込可能な新規イベントを処理すると、記事と翻訳が1回だけ書き込み先に渡り、エラー無く終わる", func(t *testing.T) {
+		t.Run("取込可能な新規イベントを処理すると、記事と翻訳が1回だけ書き込み先に渡り、エラーを返さない", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			data, err := json.Marshal(event)
 			require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.Len(t, *calls, 1)
 		})
 
-		t.Run("取込可能だが既に取り込み済みのイベントを処理すると、エラー無く終わる", func(t *testing.T) {
+		t.Run("取込可能だが既に取り込み済みのイベントを処理すると、エラーを返さない", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			data, err := json.Marshal(event)
 			require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.NoError(t, handleErr)
 		})
 
-		t.Run("本文がJSONとして解析できないデータを処理すると、書き込み先には何も渡らず、エラー無く終わる", func(t *testing.T) {
+		t.Run("本文がJSONとして解析できないデータを処理すると、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
 			h, calls := newHandlerWithRecordingWriter(true, nil)
 
 			handleErr := h.Handle(context.Background(), []byte("not valid json"))
@@ -121,7 +121,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.Empty(t, *calls)
 		})
 
-		t.Run("空のデータを処理すると、書き込み先には何も渡らず、エラー無く終わる", func(t *testing.T) {
+		t.Run("空のデータを処理すると、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
 			h, calls := newHandlerWithRecordingWriter(true, nil)
 
 			handleErr := h.Handle(context.Background(), []byte(""))
@@ -130,7 +130,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.Empty(t, *calls)
 		})
 
-		t.Run("4.1の規定により拒否されるイベント(必須フィールド欠落・列幅超過・翻訳の件数や言語が不正)を処理すると、書き込み先には何も渡らず、エラー無く終わる", func(t *testing.T) {
+		t.Run("article_idが無いなど、取込可否判定で拒否されるイベントを処理すると、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			event.ArticleID = ""
 			data, err := json.Marshal(event)
@@ -143,7 +143,7 @@ func TestArticleCollectedHandlerHandle(t *testing.T) {
 			assert.Empty(t, *calls)
 		})
 
-		t.Run("4.1の規定により拒否されるイベントを処理すると、ログに記録される内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
+		t.Run("翻訳のsummaryが無いなど、取込可否判定で拒否されるイベントを処理すると、ログに記録される内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
 			event := validCollectedEventForSubscriber()
 			event.Translations = []apinews.EventTranslation{
 				{Lang: "ja", Title: "タイトル", Summary: "", Body: "本文"},

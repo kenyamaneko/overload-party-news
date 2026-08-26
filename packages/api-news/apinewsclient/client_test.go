@@ -138,7 +138,7 @@ func TestClientGetHealth(t *testing.T) {
 
 func TestClientRequestEditor(t *testing.T) {
 	t.Run("リクエストへの加工の適用", func(t *testing.T) {
-		t.Run("リクエストエディタを指定してクライアントを構築すると、その加工が実行したリクエストに適用され、サーバー側に届くリクエストに反映される", func(t *testing.T) {
+		t.Run("クライアント構築時にリクエストへの加工(追加ヘッダの付与など)を指定すると、その加工が実行したリクエストに適用され、サーバー側に届くリクエストに反映される", func(t *testing.T) {
 			var gotHeader string
 			mux := http.NewServeMux()
 			mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {

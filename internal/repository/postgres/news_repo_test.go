@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/port"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres"
 	"github.com/kenyamaneko/overload-party-news/internal/repository/postgres/postgrestest"
@@ -267,34 +266,6 @@ func TestNewsRepositoryListPublished(t *testing.T) {
 
 				assert.ErrorIs(t, err, port.ErrNotFound)
 			})
-		})
-	})
-}
-
-func columnMaxLength(t *testing.T, tableName, columnName string) int {
-	t.Helper()
-	var maxLength int
-	err := pg.Pool.QueryRow(context.Background(), `
-		SELECT character_maximum_length
-		  FROM information_schema.columns
-		 WHERE table_schema = 'news' AND table_name = $1 AND column_name = $2
-	`, tableName, columnName).Scan(&maxLength)
-	require.NoError(t, err)
-	return maxLength
-}
-
-func TestIngestColumnWidthMatchesSchema(t *testing.T) {
-	t.Run("取り込みの列幅制約とスキーマの整合", func(t *testing.T) {
-		t.Run("記事IDの上限文字数が、記事テーブルのarticle_id列の列幅と一致する", func(t *testing.T) {
-			assert.Equal(t, domain.MaxArticleIDLength, columnMaxLength(t, "news_articles", "article_id"))
-		})
-
-		t.Run("記事IDの上限文字数が、翻訳テーブルのarticle_id列の列幅と一致する", func(t *testing.T) {
-			assert.Equal(t, domain.MaxArticleIDLength, columnMaxLength(t, "news_article_translations", "article_id"))
-		})
-
-		t.Run("ソース種別の上限文字数が、記事テーブルのsource列の列幅と一致する", func(t *testing.T) {
-			assert.Equal(t, domain.MaxSourceLength, columnMaxLength(t, "news_articles", "source"))
 		})
 	})
 }

@@ -156,7 +156,7 @@ func TestNewsHandlerList(t *testing.T) {
 			}
 
 			for _, tt := range tests {
-				t.Run(tt.name+"、400と、応答本文に該当メッセージを含む内容を返す", func(t *testing.T) {
+				t.Run(tt.name+"、400と、応答本文に「"+tt.wantErrContain+"」を含む内容を返す", func(t *testing.T) {
 					repo := &port.MockNewsRepo{}
 					r := newNewsEngine(repo)
 
