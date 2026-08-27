@@ -38,8 +38,8 @@ func envelopeBody(data string) string {
 }
 
 func TestPubsubPushHandlerHandle(t *testing.T) {
-	t.Run("[Pub/Sub pushハンドラ]Pub/Sub push envelopeの解析", func(t *testing.T) {
-		t.Run("envelopeが正しい形式で、後続処理が成功するとき、200を返し、後続処理にはbase64復号後の本文がそのまま渡る", func(t *testing.T) {
+	t.Run("[Pub/Sub pushハンドラ]push通知のリクエスト本文の解析", func(t *testing.T) {
+		t.Run("push通知のリクエスト本文が正しい形式で、後続処理が成功するとき、200を返し、後続処理にはbase64復号後の本文がそのまま渡る", func(t *testing.T) {
 			var got []byte
 			r := newPushEngine(func(_ context.Context, data []byte) error {
 				got = data
@@ -52,7 +52,7 @@ func TestPubsubPushHandlerHandle(t *testing.T) {
 			assert.Equal(t, "payload-content", string(got))
 		})
 
-		t.Run("envelopeが正しい形式で、後続処理がエラーを返すとき、500と、そのエラーの内容を含む応答を返す", func(t *testing.T) {
+		t.Run("push通知のリクエスト本文が正しい形式で、後続処理がエラーを返すとき、500と、そのエラーの内容を含む応答を返す", func(t *testing.T) {
 			handlerErr := errors.New("downstream failed")
 			r := newPushEngine(func(_ context.Context, _ []byte) error {
 				return handlerErr
