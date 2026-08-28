@@ -2,81 +2,50 @@ package domain_test
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"github.com/kenyamaneko/overload-party-news/internal/domain"
 )
 
-func TestEnumDriftAgainstOpenAPISpec(t *testing.T) {
-	t.Run("domainとopenapi.yamlのenum整合", func(t *testing.T) {
-		// SSoT は domain 側。openapi.yaml は外部公開ドキュメントとして同じ値集合を持つ必要がある。
-		spec := loadOpenAPISpec(t)
-
-		cases := []struct {
-			name       string
-			schemaName string
-			want       []string
-		}{
-			{
-				name:       "Lang enumがdomainとopenapi.yamlで一致する",
-				schemaName: "Lang",
-				want:       domain.SupportedLangs,
-			},
-			{
-				name:       "Source enumがdomainとopenapi.yamlで一致する",
-				schemaName: "Source",
-				want:       domain.Sources,
-			},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				got := specEnumValues(t, spec, tc.schemaName)
-				require.ElementsMatch(t, tc.want, got, "domain と openapi.yaml の %s enum が drift している", tc.schemaName)
-			})
-		}
-	})
+type openapiSchemas struct {
+	Components struct {
+		Schemas struct {
+			Lang struct {
+				Enum []string `yaml:"enum"`
+			} `yaml:"Lang"`
+			Source struct {
+				Enum []string `yaml:"enum"`
+			} `yaml:"Source"`
+		} `yaml:"schemas"`
+	} `yaml:"components"`
 }
 
-// loadOpenAPISpec は data/openapi.yaml をパースして返す。
-func loadOpenAPISpec(t *testing.T) map[string]interface{} {
+func readOpenAPISchemas(t *testing.T) openapiSchemas {
 	t.Helper()
-	specPath := filepath.Join(repoRoot(t), "data", "openapi.yaml")
-	raw, err := os.ReadFile(specPath)
+	data, err := os.ReadFile("../../data/openapi.yaml")
 	require.NoError(t, err)
-	var doc map[string]interface{}
-	require.NoError(t, yaml.Unmarshal(raw, &doc))
+
+	var doc openapiSchemas
+	require.NoError(t, yaml.Unmarshal(data, &doc))
 	return doc
 }
 
-// specEnumValues は components/schemas/<name>/enum 配下の値一覧を取り出す。
-func specEnumValues(t *testing.T, spec map[string]interface{}, schemaName string) []string {
-	t.Helper()
-	components, ok := spec["components"].(map[string]interface{})
-	require.True(t, ok, "components が見つからない")
-	schemas, ok := components["schemas"].(map[string]interface{})
-	require.True(t, ok, "components/schemas が見つからない")
-	schema, ok := schemas[schemaName].(map[string]interface{})
-	require.True(t, ok, "components/schemas/%s が見つからない", schemaName)
-	rawEnum, ok := schema["enum"].([]interface{})
-	require.True(t, ok, "components/schemas/%s/enum が無い、または配列でない", schemaName)
-	out := make([]string, 0, len(rawEnum))
-	for _, v := range rawEnum {
-		s, ok := v.(string)
-		require.True(t, ok, "%s の enum 値が文字列でない", schemaName)
-		out = append(out, s)
-	}
-	return out
-}
+func TestSupportedEnumsMatchOpenAPIContract(t *testing.T) {
+	t.Run("[ニュースドメインモデル]対応言語コード・ソース種別の集合とdata/openapi.yamlの整合", func(t *testing.T) {
+		t.Run("対応言語コードの集合が、data/openapi.yamlのLang enumの値集合と一致する", func(t *testing.T) {
+			doc := readOpenAPISchemas(t)
 
-// repoRoot は本ファイルから見たリポジトリルートを返す (internal/domain/ から 2 階層上)。
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	return filepath.Join(wd, "..", "..")
+			assert.ElementsMatch(t, doc.Components.Schemas.Lang.Enum, domain.SupportedLangs)
+		})
+
+		t.Run("ソース種別の集合が、data/openapi.yamlのSource enumの値集合と一致する", func(t *testing.T) {
+			doc := readOpenAPISchemas(t)
+
+			assert.ElementsMatch(t, doc.Components.Schemas.Source.Enum, domain.Sources)
+		})
+	})
 }

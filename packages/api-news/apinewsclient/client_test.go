@@ -6,59 +6,63 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kenyamaneko/overload-party-news/packages/api-news/apinewsclient"
-	"github.com/kenyamaneko/overload-party-news/packages/api-news/apinewsserverfake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
+	"github.com/kenyamaneko/overload-party-news/packages/api-news/apinewsclient"
+	"github.com/kenyamaneko/overload-party-news/packages/api-news/apinewsserverfake"
 )
 
-// StatusMapping 群は、SDK の固有責務である「OpenAPI spec で宣言された 4xx/5xx status を
-// sentinel error に変換する」契約を endpoint ごとに検証する。各テストは data/openapi.yaml が
-// 宣言する error status を網羅する。
+func newTestClient(t *testing.T, srv *apinewsserverfake.Server, opts ...apinewsclient.Option) *apinewsclient.Client {
+	t.Helper()
+	c, err := apinewsclient.New(srv.URL(), opts...)
+	require.NoError(t, err)
+	return c
+}
 
-func TestClient_ListNews_StatusMapping(t *testing.T) {
-	t.Run("ListNewsのステータスマッピング", func(t *testing.T) {
-		cases := []struct {
-			name       string
-			status     int
-			wantTarget error
-		}{
-			{
-				name:       "400を受けたとき、ErrBadRequestになる",
-				status:     http.StatusBadRequest,
-				wantTarget: apinewsclient.ErrBadRequest,
-			},
-			{
-				name:       "401を受けたとき、ErrUnauthorizedになる",
-				status:     http.StatusUnauthorized,
-				wantTarget: apinewsclient.ErrUnauthorized,
-			},
-			{
-				name:       "500を受けたとき、ErrInternalServerになる",
-				status:     http.StatusInternalServerError,
-				wantTarget: apinewsclient.ErrInternalServer,
-			},
-		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				srv := apinewsserverfake.NewServer()
-				defer srv.Close()
-				srv.ListNewsFn = func(_ string, _ int) (int, any) { return tc.status, nil }
-
-				c := newTestClient(t, srv.URL())
-				// status mapping 検証のため query param の値は無関係 (server fake は lang/limit を見ず tc.status を返す)。
-				_, err := c.ListNews(context.Background(), "", 0)
-				assertSentinel(t, err, tc.wantTarget)
-			})
-		}
-
-		t.Run("契約に無い403を受けたとき、想定外のステータスとしてエラーになる", func(t *testing.T) {
+func TestClientListNews(t *testing.T) {
+	t.Run("ニュース一覧取得のステータス変換", func(t *testing.T) {
+		t.Run("サーバが400を返したとき、bad requestを表すエラーになる", func(t *testing.T) {
 			srv := apinewsserverfake.NewServer()
 			defer srv.Close()
-			srv.ListNewsFn = func(_ string, _ int) (int, any) { return http.StatusForbidden, nil }
+			srv.ListNewsFn = func(string, int) (int, any) { return http.StatusBadRequest, nil }
+			c := newTestClient(t, srv)
 
-			c := newTestClient(t, srv.URL())
-			_, err := c.ListNews(context.Background(), "", 0)
+			_, err := c.ListNews(context.Background(), "ja", 10)
+
+			assert.ErrorIs(t, err, apinewsclient.ErrBadRequest)
+		})
+
+		t.Run("サーバが401を返したとき、unauthorizedを表すエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.ListNewsFn = func(string, int) (int, any) { return http.StatusUnauthorized, nil }
+			c := newTestClient(t, srv)
+
+			_, err := c.ListNews(context.Background(), "ja", 10)
+
+			assert.ErrorIs(t, err, apinewsclient.ErrUnauthorized)
+		})
+
+		t.Run("サーバが500を返したとき、internal server errorを表すエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.ListNewsFn = func(string, int) (int, any) { return http.StatusInternalServerError, nil }
+			c := newTestClient(t, srv)
+
+			_, err := c.ListNews(context.Background(), "ja", 10)
+
+			assert.ErrorIs(t, err, apinewsclient.ErrInternalServer)
+		})
+
+		t.Run("契約に無い403をサーバが返したとき、unexpected status 403を含む想定外のエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.ListNewsFn = func(string, int) (int, any) { return http.StatusForbidden, nil }
+			c := newTestClient(t, srv)
+
+			_, err := c.ListNews(context.Background(), "ja", 10)
 
 			require.Error(t, err)
 			assert.ErrorContains(t, err, "unexpected status 403")
@@ -66,86 +70,95 @@ func TestClient_ListNews_StatusMapping(t *testing.T) {
 	})
 }
 
-func TestClient_GetNewsDetail_StatusMapping(t *testing.T) {
-	t.Run("GetNewsDetailのステータスマッピング", func(t *testing.T) {
-		cases := []struct {
-			name       string
-			status     int
-			wantTarget error
-		}{
-			{
-				name:       "400を受けたとき、ErrBadRequestになる",
-				status:     http.StatusBadRequest,
-				wantTarget: apinewsclient.ErrBadRequest,
-			},
-			{
-				name:       "401を受けたとき、ErrUnauthorizedになる",
-				status:     http.StatusUnauthorized,
-				wantTarget: apinewsclient.ErrUnauthorized,
-			},
-			{
-				name:       "404を受けたとき、ErrNotFoundになる",
-				status:     http.StatusNotFound,
-				wantTarget: apinewsclient.ErrNotFound,
-			},
-			{
-				name:       "500を受けたとき、ErrInternalServerになる",
-				status:     http.StatusInternalServerError,
-				wantTarget: apinewsclient.ErrInternalServer,
-			},
-		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				srv := apinewsserverfake.NewServer()
-				defer srv.Close()
-				srv.GetNewsDetailFn = func(_ string, _ string) (int, any) { return tc.status, nil }
+func TestClientGetNewsDetail(t *testing.T) {
+	t.Run("ニュース詳細取得のステータス変換", func(t *testing.T) {
+		t.Run("サーバが400を返したとき、bad requestを表すエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.GetNewsDetailFn = func(string, string) (int, any) { return http.StatusBadRequest, nil }
+			c := newTestClient(t, srv)
 
-				c := newTestClient(t, srv.URL())
-				// status mapping 検証のため articleID / lang の値は無関係 (server fake は両者を見ず tc.status を返す)。
-				_, err := c.GetNewsDetail(context.Background(), "x", "")
-				assertSentinel(t, err, tc.wantTarget)
-			})
-		}
-	})
-}
+			_, err := c.GetNewsDetail(context.Background(), "article-001", "ja")
 
-func TestClient_RequestEditor(t *testing.T) {
-	t.Run("リクエストエディタの適用", func(t *testing.T) {
-		t.Run("WithRequestEditorFnで渡したeditorが全リクエストに適用される", func(t *testing.T) {
-			// X-Internal-Auth header 注入の接続点として SDK が機能することを担保する。
-			var gotHeader string
-			spy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				gotHeader = r.Header.Get("X-Internal-Auth")
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"articles":[]}`))
-			}))
-			defer spy.Close()
+			assert.ErrorIs(t, err, apinewsclient.ErrBadRequest)
+		})
 
-			c, err := apinewsclient.New(spy.URL,
-				apinewsclient.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
-					req.Header.Set("X-Internal-Auth", "test-token")
-					return nil
-				}),
-			)
-			require.NoError(t, err)
+		t.Run("サーバが401を返したとき、unauthorizedを表すエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.GetNewsDetailFn = func(string, string) (int, any) { return http.StatusUnauthorized, nil }
+			c := newTestClient(t, srv)
 
-			_, err = c.ListNews(context.Background(), "ja", 10)
-			require.NoError(t, err)
-			assert.Equal(t, "test-token", gotHeader)
+			_, err := c.GetNewsDetail(context.Background(), "article-001", "ja")
+
+			assert.ErrorIs(t, err, apinewsclient.ErrUnauthorized)
+		})
+
+		t.Run("サーバが404を返したとき、not foundを表すエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.GetNewsDetailFn = func(string, string) (int, any) { return http.StatusNotFound, nil }
+			c := newTestClient(t, srv)
+
+			_, err := c.GetNewsDetail(context.Background(), "article-001", "ja")
+
+			assert.ErrorIs(t, err, apinewsclient.ErrNotFound)
+		})
+
+		t.Run("サーバが500を返したとき、internal server errorを表すエラーになる", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.GetNewsDetailFn = func(string, string) (int, any) { return http.StatusInternalServerError, nil }
+			c := newTestClient(t, srv)
+
+			_, err := c.GetNewsDetail(context.Background(), "article-001", "ja")
+
+			assert.ErrorIs(t, err, apinewsclient.ErrInternalServer)
 		})
 	})
 }
 
-func newTestClient(t *testing.T, baseURL string) *apinewsclient.Client {
-	t.Helper()
-	c, err := apinewsclient.New(baseURL)
-	require.NoError(t, err)
-	return c
+func TestClientGetHealth(t *testing.T) {
+	t.Run("ヘルスチェック取得", func(t *testing.T) {
+		t.Run("サーバが200とヘルスチェック応答を返したとき、その内容をそのまま返す", func(t *testing.T) {
+			srv := apinewsserverfake.NewServer()
+			defer srv.Close()
+			srv.GetHealthFn = func() (int, any) {
+				return http.StatusOK, apinews.HealthResponse{Status: "ok"}
+			}
+			c := newTestClient(t, srv)
+
+			got, err := c.GetHealth(context.Background())
+
+			require.NoError(t, err)
+			assert.Equal(t, "ok", got.Status)
+		})
+	})
 }
 
-func assertSentinel(t *testing.T, gotErr, wantTarget error) {
-	t.Helper()
-	require.Error(t, gotErr)
-	assert.ErrorIs(t, gotErr, wantTarget)
+func TestClientRequestEditor(t *testing.T) {
+	t.Run("リクエストへの加工の適用", func(t *testing.T) {
+		t.Run("クライアント構築時にリクエストへの加工(追加ヘッダの付与など)を指定すると、その加工が実行したリクエストに適用され、サーバー側に届くリクエストに反映される", func(t *testing.T) {
+			var gotHeader string
+			mux := http.NewServeMux()
+			mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+				gotHeader = r.Header.Get("X-Custom-Header")
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
+			})
+			rawSrv := httptest.NewServer(mux)
+			defer rawSrv.Close()
+
+			c, err := apinewsclient.New(rawSrv.URL, apinewsclient.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+				req.Header.Set("X-Custom-Header", "editor-applied")
+				return nil
+			}))
+			require.NoError(t, err)
+
+			_, err = c.GetHealth(context.Background())
+
+			require.NoError(t, err)
+			assert.Equal(t, "editor-applied", gotHeader)
+		})
+	})
 }

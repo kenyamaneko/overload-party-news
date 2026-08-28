@@ -3,8 +3,8 @@ package ingest_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,195 +15,296 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-// writtenArticle は writer に渡された記事と翻訳の組。
-type writtenArticle struct {
-	article                    domain.Article
-	lang, title, summary, body string
-}
-
-func validEvent() apinews.ArticleCollectedEvent {
-	pub := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
+func validCollectedEvent() apinews.ArticleCollectedEvent {
 	return apinews.ArticleCollectedEvent{
-		ArticleID:         "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-		Source:            "aws",
-		SourceURL:         "https://aws.amazon.com/blogs/aws/foo",
-		Tags:              []string{"compute"},
-		SourcePublishedAt: &pub,
+		ArticleID: "article-id-valid-001",
+		Source:    "aws",
+		SourceURL: "https://example.com/articles/1",
+		Tags:      []string{"cloud", "release"},
 		Translations: []apinews.EventTranslation{
-			{Lang: domain.LangJa, Title: "タイトル", Summary: "要約", Body: "本文"},
+			{Lang: "ja", Title: "タイトル", Summary: "要約", Body: "本文"},
 		},
 	}
 }
 
-func TestInsert(t *testing.T) {
-	t.Run("イベントの取込", func(t *testing.T) {
-		validCases := []struct {
-			name   string
-			mutate func(*apinews.ArticleCollectedEvent)
-		}{
-			{
-				name:   "完全なイベント (ja 1件)のとき、記事と翻訳がINSERTされる",
-				mutate: func(_ *apinews.ArticleCollectedEvent) {},
-			},
-			{
-				name:   "source_published_atがnullでも、INSERTされる",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.SourcePublishedAt = nil },
-			},
-			{
-				name:   "tagsがnilでも、INSERTされる",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Tags = nil },
-			},
-			{
-				name:   "article_idが26文字のとき、INSERTされる",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" },
-			},
-			{
-				name:   "sourceが20文字のとき、INSERTされる",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "12345678901234567890" },
-			},
-		}
-		for _, tc := range validCases {
-			t.Run(tc.name, func(t *testing.T) {
-				var writes []writtenArticle
-				repo := &port.MockNewsRepo{
-					InsertArticleWithTranslationFn: func(_ context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
-						writes = append(writes, writtenArticle{article, lang, title, summary, body})
-						return true, nil
-					},
-				}
-				event := validEvent()
-				tc.mutate(&event)
+type recordedInsert struct {
+	article domain.Article
+	lang    string
+	title   string
+	summary string
+	body    string
+}
 
-				_, err := ingest.New(repo).Insert(context.Background(), event)
+func newRecordingWriter(inserted bool, err error) (*port.MockNewsRepo, *[]recordedInsert) {
+	var calls []recordedInsert
+	writer := &port.MockNewsRepo{
+		InsertArticleWithTranslationFn: func(_ context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+			calls = append(calls, recordedInsert{article: article, lang: lang, title: title, summary: summary, body: body})
+			return inserted, err
+		},
+	}
+	return writer, &calls
+}
 
-				require.NoError(t, err)
-				require.Len(t, writes, 1)
-				assert.Equal(t, event.ArticleID, writes[0].article.ArticleID)
-				assert.Equal(t, event.SourceURL, writes[0].article.SourceURL)
-				assert.Equal(t, domain.LangJa, writes[0].lang)
-				assert.Equal(t, "タイトル", writes[0].title)
-				assert.Equal(t, "要約", writes[0].summary)
-				assert.Equal(t, "本文", writes[0].body)
-			})
-		}
+func TestIngestInteractorInsert(t *testing.T) {
+	t.Run("記事収集イベントの取込可否判定", func(t *testing.T) {
+		t.Run("article_id・source・source_url・翻訳(ja1件、title・summary・body全て)が揃った完全なイベントのとき、記事と翻訳が書き込み先に渡され、渡された内容がイベントの値と一致する", func(t *testing.T) {
+			event := validCollectedEvent()
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
 
-		invalidCases := []struct {
-			name   string
-			mutate func(*apinews.ArticleCollectedEvent)
-		}{
-			{
-				name: "翻訳がja + enの2件のとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) {
-					e.Translations = append(e.Translations, apinews.EventTranslation{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"})
-				},
-			},
-			{
-				name:   "article_id欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "" },
-			},
-			{
-				name:   "article_idが27文字のとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.ArticleID = "ABCDEFGHIJKLMNOPQRSTUVWXYZ7" },
-			},
-			{
-				name:   "source欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "" },
-			},
-			{
-				name:   "sourceが21文字のとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Source = "123456789012345678901" },
-			},
-			{
-				name:   "source_url欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.SourceURL = "" },
-			},
-			{
-				name:   "translations空のとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations = nil },
-			},
-			{
-				name:   "translations[0].langがen (ja以外)のとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = domain.LangEn },
-			},
-			{
-				name:   "translations[0].lang欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Lang = "" },
-			},
-			{
-				name:   "translations[0].title欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Title = "" },
-			},
-			{
-				name:   "translations[0].summary欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Summary = "" },
-			},
-			{
-				name:   "translations[0].body欠けのとき、拒否される",
-				mutate: func(e *apinews.ArticleCollectedEvent) { e.Translations[0].Body = "" },
-			},
-		}
-		for _, tc := range invalidCases {
-			t.Run(tc.name, func(t *testing.T) {
-				var writeCalls int
-				repo := &port.MockNewsRepo{
-					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
-						writeCalls++
-						return true, nil
-					},
-				}
-				event := validEvent()
-				tc.mutate(&event)
+			_, err := uc.Insert(context.Background(), event)
 
-				_, err := ingest.New(repo).Insert(context.Background(), event)
+			require.NoError(t, err)
+			require.Len(t, *calls, 1)
+			got := (*calls)[0]
+			assert.Equal(t, event.ArticleID, got.article.ArticleID)
+			assert.Equal(t, event.SourceURL, got.article.SourceURL)
+			assert.Equal(t, event.Translations[0].Lang, got.lang)
+			assert.Equal(t, event.Translations[0].Title, got.title)
+			assert.Equal(t, event.Translations[0].Summary, got.summary)
+			assert.Equal(t, event.Translations[0].Body, got.body)
+		})
 
-				assert.ErrorIs(t, err, ingest.ErrInvalidEventPayload)
-				assert.Equal(t, 0, writeCalls)
-			})
-		}
+		t.Run("source_published_atが無いイベントでも、記事と翻訳が書き込み先に渡される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.SourcePublishedAt = nil
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
 
-		propagationValidCases := []struct {
-			name         string
-			writeResult  bool
-			wantInserted bool
-		}{
-			{
-				name:         "記事が新規挿入のとき、inserted=trueを返す",
-				writeResult:  true,
-				wantInserted: true,
-			},
-			{
-				name:         "記事が既に取り込み済みのとき、inserted=falseを返す",
-				writeResult:  false,
-				wantInserted: false,
-			},
-		}
-		for _, tc := range propagationValidCases {
-			t.Run(tc.name, func(t *testing.T) {
-				repo := &port.MockNewsRepo{
-					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
-						return tc.writeResult, nil
-					},
-				}
+			_, err := uc.Insert(context.Background(), event)
 
-				inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
+			require.NoError(t, err)
+			require.Len(t, *calls, 1)
+			assert.Nil(t, (*calls)[0].article.SourcePublishedAt)
+		})
 
-				require.NoError(t, err)
-				assert.Equal(t, tc.wantInserted, inserted)
-			})
-		}
+		t.Run("article_idがちょうど26文字のとき、記事と翻訳が書き込み先に渡される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.ArticleID = strings.Repeat("a", 26)
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
 
-		t.Run("INSERTでDB障害のとき、そのエラーが伝播する", func(t *testing.T) {
-			dbErr := errors.New("db lost")
-			repo := &port.MockNewsRepo{
-				InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
-					return false, dbErr
-				},
-			}
+			_, err := uc.Insert(context.Background(), event)
 
-			inserted, err := ingest.New(repo).Insert(context.Background(), validEvent())
+			require.NoError(t, err)
+			require.Len(t, *calls, 1)
+			assert.Equal(t, event.ArticleID, (*calls)[0].article.ArticleID)
+		})
 
-			assert.ErrorIs(t, err, dbErr)
+		t.Run("sourceがちょうど20文字のとき、記事と翻訳が書き込み先に渡される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Source = strings.Repeat("s", 20)
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.NoError(t, err)
+			require.Len(t, *calls, 1)
+			assert.Equal(t, event.Source, (*calls)[0].article.Source)
+		})
+
+		t.Run("書き込みが新規に行われたとき、取込結果は新規に取り込んだことを表す値になる", func(t *testing.T) {
+			event := validCollectedEvent()
+			writer, _ := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			inserted, err := uc.Insert(context.Background(), event)
+
+			require.NoError(t, err)
+			assert.True(t, inserted)
+		})
+
+		t.Run("記事が既に取り込み済みで書き込みが行われなかったとき、取込結果は新規に取り込んでいないことを表す値になる", func(t *testing.T) {
+			event := validCollectedEvent()
+			writer, _ := newRecordingWriter(false, nil)
+			uc := ingest.New(writer)
+
+			inserted, err := uc.Insert(context.Background(), event)
+
+			require.NoError(t, err)
 			assert.False(t, inserted)
+		})
+
+		t.Run("書き込み先がエラーを返すとき、そのエラーが取込結果として伝わる", func(t *testing.T) {
+			event := validCollectedEvent()
+			writerErr := errors.New("insert failed")
+			writer, _ := newRecordingWriter(false, writerErr)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			assert.ErrorIs(t, err, writerErr)
+		})
+
+		t.Run("article_idが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.ArticleID = ""
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("article_idが27文字(上限超過)のイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.ArticleID = strings.Repeat("a", 27)
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("sourceが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Source = ""
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("sourceが21文字(上限超過)のイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Source = strings.Repeat("s", 21)
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("source_urlが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.SourceURL = ""
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("tagsが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Tags = nil
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳が0件のイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = nil
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳がjaとenの2件あるイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "ja", Title: "タイトル", Summary: "要約", Body: "本文"},
+				{Lang: "en", Title: "title", Summary: "summary", Body: "body"},
+			}
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳の言語がja以外(en)1件だけのイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "en", Title: "title", Summary: "summary", Body: "body"},
+			}
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳の言語が無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "", Title: "タイトル", Summary: "要約", Body: "本文"},
+			}
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳のtitleが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "ja", Title: "", Summary: "要約", Body: "本文"},
+			}
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳のsummaryが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "ja", Title: "タイトル", Summary: "", Body: "本文"},
+			}
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
+		})
+
+		t.Run("翻訳のbodyが無いイベントは、書き込み先に何も渡されずに拒否される", func(t *testing.T) {
+			event := validCollectedEvent()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "ja", Title: "タイトル", Summary: "要約", Body: ""},
+			}
+			writer, calls := newRecordingWriter(true, nil)
+			uc := ingest.New(writer)
+
+			_, err := uc.Insert(context.Background(), event)
+
+			require.Error(t, err)
+			assert.Empty(t, *calls)
 		})
 	})
 }

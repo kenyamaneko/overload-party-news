@@ -1,6 +1,6 @@
 module github.com/kenyamaneko/overload-party-news/packages/api-news
 
-go 1.25.9
+go 1.25.13
 
 require (
 	github.com/oapi-codegen/runtime v1.4.0

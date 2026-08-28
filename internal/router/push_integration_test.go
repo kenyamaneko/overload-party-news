@@ -4,11 +4,9 @@ package router_test
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"log"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,13 +15,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	internalauth "github.com/kenyamaneko/overload-party-gateway/packages/internalauth-go"
-
-	"github.com/kenyamaneko/overload-party-news/internal/domain"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/pubsubpush"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/rest"
 	"github.com/kenyamaneko/overload-party-news/internal/handler/subscriber"
@@ -35,497 +32,510 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-const pushPath = "/internal/v1/pubsub/news-article-collected"
+var pg *postgrestest.Postgres
 
-var sharedPG *postgrestest.Postgres
-
-// TestMain は Postgres testcontainer を package scope で 1 回だけ起動する。
-// テスト間の分離は Postgres.Truncate で担保する。
 func TestMain(m *testing.M) {
-	os.Exit(runMain(m))
+	os.Exit(postgrestest.RunMain(m, &pg))
 }
 
-func runMain(m *testing.M) int {
+func newPushRouterEngine(repo *postgres.NewsRepository) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	ctx := context.Background()
-
-	pg, err := postgrestest.Start(ctx)
-	if err != nil {
-		log.Fatalf("postgrestest.Start: %v", err)
-	}
-	defer func() {
-		if err := pg.Close(ctx); err != nil {
-			log.Printf("postgres close: %v", err)
-		}
-	}()
-	sharedPG = pg
-
-	return m.Run()
-}
-
-// newTestRouter は「HTTP push → router → subscriber → ingest → repo → DB」を実 DB で直結した
-// 公開 router を構築する。push 受け口は認証を持たないため verifier は /api/v1/news 側の配線確認用。
-func newTestRouter(t *testing.T) (*gin.Engine, *postgres.NewsRepository) {
-	t.Helper()
-	sharedPG.Truncate(t)
-
-	repo := postgres.NewNewsRepository(sharedPG.Pool)
-	return buildRouter(t, repo), repo
-}
-
-// buildRouter は指定 repo を配線した公開 router を構築する。
-func buildRouter(t *testing.T, repo *postgres.NewsRepository) *gin.Engine {
-	t.Helper()
-
 	newsH := rest.NewNewsHandler(news.New(repo))
-	subscriberH := subscriber.NewArticleCollectedHandler(ingest.New(repo))
-	pushH := pubsubpush.NewHandler(subscriberH.Handle)
-	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	verifier := internalauth.NewVerifier(internalauth.StaticPublicKeyResolver(&signingKey.PublicKey, internalauth.DefaultKeyID))
-
+	subH := subscriber.NewArticleCollectedHandler(ingest.New(repo))
+	pushH := pubsubpush.NewHandler(subH.Handle)
+	verifier := &internalauth.MockVerifier{}
 	return router.NewPublic(newsH, verifier, pushH)
 }
 
-// newClosedPool は接続を閉じた pool を返す。DB へ到達できない状態を作るために用いる。
-func newClosedPool(t *testing.T) *pgxpool.Pool {
-	t.Helper()
-
-	dsn, err := sharedPG.Container.ConnectionString(context.Background(), "sslmode=disable")
-	require.NoError(t, err)
-	pool, err := pgxpool.New(context.Background(), dsn)
-	require.NoError(t, err)
-	pool.Close()
-	return pool
-}
-
-// doPush は指定 payload を Pub/Sub push envelope に包んで push 受け口へ POST する。
-func doPush(t *testing.T, r *gin.Engine, payload []byte) *httptest.ResponseRecorder {
-	t.Helper()
-	encoded := base64.StdEncoding.EncodeToString(payload)
-	body := `{"message":{"data":"` + encoded + `","messageId":"m1","attributes":{}},"subscription":"projects/p/subscriptions/news-article-collected-news-sub"}`
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(body)))
-	return w
-}
-
-func validEventPayload(t *testing.T, articleID string) []byte {
-	t.Helper()
-	return eventPayload(t, articleID, "aws")
-}
-
-func eventPayload(t *testing.T, articleID, source string) []byte {
-	t.Helper()
-	event := collectedEvent(articleID, "https://aws.amazon.com/"+articleID, "タイトル", "要約", "本文")
-	event.Source = source
-	return marshalEvent(t, event)
-}
-
-// collectedEvent は source_url と翻訳文面を article_id と独立に指定した記事収集イベントを組み立てる。
-func collectedEvent(articleID, sourceURL, title, summary, body string) apinews.ArticleCollectedEvent {
-	pub := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
-	return apinews.ArticleCollectedEvent{
-		ArticleID:         articleID,
-		Source:            "aws",
-		SourceURL:         sourceURL,
-		Tags:              []string{"compute"},
-		SourcePublishedAt: &pub,
-		Translations: []apinews.EventTranslation{
-			{Lang: domain.LangJa, Title: title, Summary: summary, Body: body},
-		},
-	}
-}
-
-func marshalEvent(t *testing.T, event apinews.ArticleCollectedEvent) []byte {
+func encodeEventBase64(t *testing.T, event apinews.ArticleCollectedEvent) string {
 	t.Helper()
 	data, err := json.Marshal(event)
 	require.NoError(t, err)
-	return data
+	return base64.StdEncoding.EncodeToString(data)
 }
 
-// loadArticleWithTranslations は記事 + 翻訳を直接 SQL で取得して合成し、Status を導出する統合テスト用ヘルパー。
-func loadArticleWithTranslations(articleID string) (*domain.ArticleWithTranslations, error) {
-	ctx := context.Background()
-	row := sharedPG.Pool.QueryRow(ctx,
-		`SELECT article_id, source, source_url, tags,
-		        source_published_at, published_at, ingested_at, reviewed_at, reviewer, updated_at
-		   FROM news.news_articles
-		  WHERE article_id = $1`,
-		articleID,
-	)
-	var article domain.Article
-	if err := row.Scan(
-		&article.ArticleID, &article.Source, &article.SourceURL, &article.Tags,
-		&article.SourcePublishedAt, &article.PublishedAt, &article.IngestedAt,
-		&article.ReviewedAt, &article.Reviewer, &article.UpdatedAt,
-	); err != nil {
-		return nil, err
-	}
-
-	rows, err := sharedPG.Pool.Query(ctx,
-		`SELECT article_id, lang, title, summary, body, created_at, updated_at
-		   FROM news.news_article_translations
-		  WHERE article_id = $1
-		  ORDER BY lang`,
-		articleID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var translations []domain.Translation
-	for rows.Next() {
-		var t domain.Translation
-		if err := rows.Scan(&t.ArticleID, &t.Lang, &t.Title, &t.Summary, &t.Body, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			return nil, err
-		}
-		translations = append(translations, t)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	article.Status = domain.DeriveStatus(article)
-	return &domain.ArticleWithTranslations{Article: article, Translations: translations}, nil
+func pushEnvelopeBody(dataB64 string) string {
+	return `{"message":{"data":"` + dataB64 + `"}}`
 }
 
-// articleExists は article_id の記事が永続化されているかを直接 SQL で確認する統合テスト用ヘルパー。
-func articleExists(ctx context.Context, articleID string) (bool, error) {
-	var exists bool
-	err := sharedPG.Pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM news.news_articles WHERE article_id = $1)`,
-		articleID,
-	).Scan(&exists)
-	return exists, err
+func doPush(t *testing.T, r *gin.Engine, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/pubsub/news-article-collected", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
 }
 
-// fetchArticleIDs は永続化済み記事の article_id 一覧を ingested_at DESC で返す統合テスト用ヘルパー。
-func fetchArticleIDs(ctx context.Context) ([]string, error) {
-	rows, err := sharedPG.Pool.Query(ctx, `SELECT article_id FROM news.news_articles ORDER BY ingested_at DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return ids, nil
+func pushEvent(t *testing.T, r *gin.Engine, event apinews.ArticleCollectedEvent) *httptest.ResponseRecorder {
+	t.Helper()
+	return doPush(t, r, pushEnvelopeBody(encodeEventBase64(t, event)))
 }
 
-// countTranslations は指定 article_id 群に紐づく翻訳行数を直接 SQL で数える統合テスト用ヘルパー。
-func countTranslations(ctx context.Context, articleIDs []string) (int, error) {
+type persistedArticle struct {
+	ArticleID         string
+	Source            string
+	SourceURL         string
+	Tags              []string
+	SourcePublishedAt *time.Time
+	ReviewedAt        *time.Time
+	PublishedAt       *time.Time
+}
+
+func queryArticle(t *testing.T, articleID string) (persistedArticle, bool) {
+	t.Helper()
+	var a persistedArticle
+	err := pg.Pool.QueryRow(context.Background(), `
+		SELECT article_id, source, source_url, tags, source_published_at, reviewed_at, published_at
+		  FROM news.news_articles WHERE article_id = $1
+	`, articleID).Scan(&a.ArticleID, &a.Source, &a.SourceURL, &a.Tags, &a.SourcePublishedAt, &a.ReviewedAt, &a.PublishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return persistedArticle{}, false
+	}
+	require.NoError(t, err)
+	return a, true
+}
+
+type persistedTranslation struct {
+	Title     string
+	Summary   string
+	Body      string
+	CreatedAt time.Time
+}
+
+func queryTranslation(t *testing.T, articleID, lang string) (persistedTranslation, bool) {
+	t.Helper()
+	var tr persistedTranslation
+	err := pg.Pool.QueryRow(context.Background(), `
+		SELECT title, summary, body, created_at
+		  FROM news.news_article_translations WHERE article_id = $1 AND lang = $2
+	`, articleID, lang).Scan(&tr.Title, &tr.Summary, &tr.Body, &tr.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return persistedTranslation{}, false
+	}
+	require.NoError(t, err)
+	return tr, true
+}
+
+func countTranslationsFor(t *testing.T, articleID string) int {
+	t.Helper()
 	var count int
-	err := sharedPG.Pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM news.news_article_translations WHERE article_id = ANY($1)`,
-		articleIDs,
-	).Scan(&count)
-	return count, err
+	err := pg.Pool.QueryRow(context.Background(), `SELECT count(*) FROM news.news_article_translations WHERE article_id = $1`, articleID).Scan(&count)
+	require.NoError(t, err)
+	return count
 }
 
-func TestPushIngestE2E(t *testing.T) {
-	t.Run("push受け口経由の記事取込パイプライン", func(t *testing.T) {
-		t.Run("有効なpushを投げると、200を返し記事とja翻訳が全フィールドでpending永続化される", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+func countArticlesBySourceURL(t *testing.T, sourceURL string) int {
+	t.Helper()
+	var count int
+	err := pg.Pool.QueryRow(context.Background(), `SELECT count(*) FROM news.news_articles WHERE source_url = $1`, sourceURL).Scan(&count)
+	require.NoError(t, err)
+	return count
+}
 
-			w := doPush(t, r, validEventPayload(t, articleID))
-			assert.Equal(t, http.StatusOK, w.Code)
+func countAllArticles(t *testing.T) int {
+	t.Helper()
+	var count int
+	err := pg.Pool.QueryRow(context.Background(), `SELECT count(*) FROM news.news_articles`).Scan(&count)
+	require.NoError(t, err)
+	return count
+}
 
-			aw, err := loadArticleWithTranslations(articleID)
-			require.NoError(t, err)
-			assert.Equal(t, articleID, aw.Article.ArticleID)
-			assert.Equal(t, domain.StatusPending, aw.Article.Status)
-			assert.Equal(t, "aws", aw.Article.Source)
-			assert.Equal(t, "https://aws.amazon.com/"+articleID, aw.Article.SourceURL)
-			assert.Equal(t, []string{"compute"}, aw.Article.Tags)
-			require.NotNil(t, aw.Article.SourcePublishedAt)
-			assert.True(t, aw.Article.SourcePublishedAt.Equal(time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)))
-			require.Len(t, aw.Translations, 1)
-			assert.Equal(t, domain.LangJa, aw.Translations[0].Lang)
-			assert.Equal(t, "タイトル", aw.Translations[0].Title)
-			assert.Equal(t, "要約", aw.Translations[0].Summary)
-			assert.Equal(t, "本文", aw.Translations[0].Body)
+func TestPushArticleCollectedPersistence(t *testing.T) {
+	t.Run("取り込みパイプライン全体の永続化", func(t *testing.T) {
+		t.Run("有効なイベントをpushすると、200を返し、記事とja翻訳が全フィールドを保った状態で永続化され、校閲前の状態になる", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			sourcePublishedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			event := apinews.ArticleCollectedEvent{
+				ArticleID:         "push-full-fields-00001",
+				Source:            "aws",
+				SourceURL:         "https://example.com/push/full-fields",
+				Tags:              []string{"tag-a", "tag-b"},
+				SourcePublishedAt: &sourcePublishedAt,
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "full title", Summary: "full summary", Body: "full body"},
+				},
+			}
+
+			w := pushEvent(t, engine, event)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			article, found := queryArticle(t, event.ArticleID)
+			require.True(t, found)
+			assert.Equal(t, event.Source, article.Source)
+			assert.Equal(t, event.SourceURL, article.SourceURL)
+			assert.ElementsMatch(t, event.Tags, article.Tags)
+			require.NotNil(t, article.SourcePublishedAt)
+			assert.True(t, sourcePublishedAt.Equal(*article.SourcePublishedAt))
+			assert.Nil(t, article.ReviewedAt)
+			assert.Nil(t, article.PublishedAt)
+
+			translation, found := queryTranslation(t, event.ArticleID, "ja")
+			require.True(t, found)
+			assert.Equal(t, "full title", translation.Title)
+			assert.Equal(t, "full summary", translation.Summary)
+			assert.Equal(t, "full body", translation.Body)
 		})
 
-		t.Run("同一イベントをpushで2回投げても、200を2回返し翻訳は増えずcreated_atも変わらない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA2"
-			payload := validEventPayload(t, articleID)
+		t.Run("同一のイベントを2回pushしても、2回とも200を返し、翻訳は1件のまま増えず、既存翻訳の作成日時も変わらない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: "push-idempotent-00001",
+				Source:    "aws",
+				SourceURL: "https://example.com/push/idempotent",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "idempotent title", Summary: "idempotent summary", Body: "idempotent body"},
+				},
+			}
 
-			w1 := doPush(t, r, payload)
-			assert.Equal(t, http.StatusOK, w1.Code)
-			aw1, err := loadArticleWithTranslations(articleID)
-			require.NoError(t, err)
-			require.Len(t, aw1.Translations, 1)
-
-			w2 := doPush(t, r, payload)
-			assert.Equal(t, http.StatusOK, w2.Code)
-
-			aw2, err := loadArticleWithTranslations(articleID)
-			require.NoError(t, err)
-			require.Len(t, aw2.Translations, 1, "重複 push で翻訳は増えない")
-			assert.Equal(t, aw1.Translations[0].CreatedAt.UnixNano(), aw2.Translations[0].CreatedAt.UnixNano(),
-				"重複 push で既存翻訳の created_at は変わらない")
-		})
-
-		t.Run("既存記事と同じsource_urlを別のarticle_idでpushすると、200を返し記事も翻訳も増えない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-			ctx := context.Background()
-			const sourceURL = "https://aws.amazon.com/blogs/aws/same-url"
-			firstID := "01ARZ3NDEKTSV4RRFFQ69G5FB1"
-			secondID := "01ARZ3NDEKTSV4RRFFQ69G5FB2"
-
-			w1 := doPush(t, r, marshalEvent(t, collectedEvent(firstID, sourceURL, "最初のタイトル", "最初の要約", "最初の本文")))
+			w1 := pushEvent(t, engine, event)
 			require.Equal(t, http.StatusOK, w1.Code)
+			first, found := queryTranslation(t, event.ArticleID, "ja")
+			require.True(t, found)
 
-			w2 := doPush(t, r, marshalEvent(t, collectedEvent(secondID, sourceURL, "取り直しのタイトル", "取り直しの要約", "取り直しの本文")))
-			assert.Equal(t, http.StatusOK, w2.Code)
-
-			articleIDs, err := fetchArticleIDs(ctx)
-			require.NoError(t, err)
-			assert.Len(t, articleIDs, 1)
-			exists, err := articleExists(ctx, secondID)
-			require.NoError(t, err)
-			assert.False(t, exists)
-
-			translationCount, err := countTranslations(ctx, []string{firstID, secondID})
-			require.NoError(t, err)
-			assert.Equal(t, 1, translationCount)
-		})
-
-		t.Run("既存記事と同じsource_urlを別のarticle_idでpushしても、先に入った記事の翻訳は上書きされない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-			const sourceURL = "https://aws.amazon.com/blogs/aws/keep-first"
-			firstID := "01ARZ3NDEKTSV4RRFFQ69G5FB3"
-			secondID := "01ARZ3NDEKTSV4RRFFQ69G5FB4"
-
-			w1 := doPush(t, r, marshalEvent(t, collectedEvent(firstID, sourceURL, "最初のタイトル", "最初の要約", "最初の本文")))
-			require.Equal(t, http.StatusOK, w1.Code)
-			aw1, err := loadArticleWithTranslations(firstID)
-			require.NoError(t, err)
-			require.Len(t, aw1.Translations, 1)
-
-			w2 := doPush(t, r, marshalEvent(t, collectedEvent(secondID, sourceURL, "取り直しのタイトル", "取り直しの要約", "取り直しの本文")))
+			w2 := pushEvent(t, engine, event)
 			require.Equal(t, http.StatusOK, w2.Code)
 
-			aw2, err := loadArticleWithTranslations(firstID)
-			require.NoError(t, err)
-			require.Len(t, aw2.Translations, 1)
-			assert.Equal(t, "最初のタイトル", aw2.Translations[0].Title)
-			assert.Equal(t, "最初の要約", aw2.Translations[0].Summary)
-			assert.Equal(t, "最初の本文", aw2.Translations[0].Body)
-			assert.Equal(t, aw1.Translations[0].CreatedAt.UnixNano(), aw2.Translations[0].CreatedAt.UnixNano())
+			assert.Equal(t, 1, countTranslationsFor(t, event.ArticleID))
+			second, found := queryTranslation(t, event.ArticleID, "ja")
+			require.True(t, found)
+			assert.True(t, first.CreatedAt.Equal(second.CreatedAt))
 		})
 
-		t.Run("DBへ接続できない状態でpushすると500を返し、接続が戻ってから同じ記事をpushし直すと200を返し永続化される", func(t *testing.T) {
-			sharedPG.Truncate(t)
-			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FB5"
-			payload := validEventPayload(t, articleID)
+		t.Run("既存記事と同じsource_urlを別のarticle_idでpushすると、200を返すが、記事も翻訳も増えない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			sourceURL := "https://example.com/push/retake"
+			first := apinews.ArticleCollectedEvent{
+				ArticleID: "push-retake-first-0001",
+				Source:    "aws",
+				SourceURL: sourceURL,
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "first title", Summary: "first summary", Body: "first body"},
+				},
+			}
+			second := apinews.ArticleCollectedEvent{
+				ArticleID: "push-retake-second-001",
+				Source:    "aws",
+				SourceURL: sourceURL,
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "second title", Summary: "second summary", Body: "second body"},
+				},
+			}
 
-			brokenRouter := buildRouter(t, postgres.NewNewsRepository(newClosedPool(t)))
-			wDown := doPush(t, brokenRouter, payload)
-			require.Equal(t, http.StatusInternalServerError, wDown.Code)
+			w1 := pushEvent(t, engine, first)
+			require.Equal(t, http.StatusOK, w1.Code)
 
-			repo := postgres.NewNewsRepository(sharedPG.Pool)
-			wUp := doPush(t, buildRouter(t, repo), payload)
-			assert.Equal(t, http.StatusOK, wUp.Code)
+			w2 := pushEvent(t, engine, second)
+			require.Equal(t, http.StatusOK, w2.Code)
 
-			aw, err := loadArticleWithTranslations(articleID)
-			require.NoError(t, err)
-			assert.Equal(t, articleID, aw.Article.ArticleID)
-			require.Len(t, aw.Translations, 1)
+			assert.Equal(t, 1, countArticlesBySourceURL(t, sourceURL))
+			_, foundSecond := queryArticle(t, second.ArticleID)
+			assert.False(t, foundSecond)
 		})
 
-		t.Run("ja以外の翻訳を含むイベントをpushすると、200を返しDBに永続化されない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA3"
-			data, err := json.Marshal(apinews.ArticleCollectedEvent{
+		t.Run("既存記事と同じsource_urlを別のarticle_idでpushしても、先に取り込まれた記事の翻訳内容は上書きされない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			sourceURL := "https://example.com/push/retake-content"
+			first := apinews.ArticleCollectedEvent{
+				ArticleID: "push-retake-c-first-01",
+				Source:    "aws",
+				SourceURL: sourceURL,
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "original title", Summary: "original summary", Body: "original body"},
+				},
+			}
+			second := apinews.ArticleCollectedEvent{
+				ArticleID: "push-retake-c-second-1",
+				Source:    "aws",
+				SourceURL: sourceURL,
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "overwrite title", Summary: "overwrite summary", Body: "overwrite body"},
+				},
+			}
+
+			require.Equal(t, http.StatusOK, pushEvent(t, engine, first).Code)
+			require.Equal(t, http.StatusOK, pushEvent(t, engine, second).Code)
+
+			translation, found := queryTranslation(t, first.ArticleID, "ja")
+			require.True(t, found)
+			assert.Equal(t, "original title", translation.Title)
+			assert.Equal(t, "original summary", translation.Summary)
+			assert.Equal(t, "original body", translation.Body)
+		})
+
+		t.Run("DBに接続できない状態でpushすると500を返し、DB接続が復旧してから同じイベントをpushし直すと200を返し正しく永続化される", func(t *testing.T) {
+			pg.Truncate(t)
+			ctx := context.Background()
+			dsn, err := pg.Container.ConnectionString(ctx, "sslmode=disable")
+			require.NoError(t, err)
+
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: "push-disconnect-00001",
+				Source:    "aws",
+				SourceURL: "https://example.com/push/disconnect",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "disconnect title", Summary: "disconnect summary", Body: "disconnect body"},
+				},
+			}
+
+			dedicatedPool, err := pgxpool.New(ctx, dsn)
+			require.NoError(t, err)
+			dedicatedEngine := newPushRouterEngine(postgres.NewNewsRepository(dedicatedPool))
+			dedicatedPool.Close()
+
+			downW := pushEvent(t, dedicatedEngine, event)
+			require.Equal(t, http.StatusInternalServerError, downW.Code)
+
+			freshPool, err := pgxpool.New(ctx, dsn)
+			require.NoError(t, err)
+			t.Cleanup(freshPool.Close)
+			freshEngine := newPushRouterEngine(postgres.NewNewsRepository(freshPool))
+
+			recoveredW := pushEvent(t, freshEngine, event)
+			require.Equal(t, http.StatusOK, recoveredW.Code)
+
+			_, found := queryArticle(t, event.ArticleID)
+			assert.True(t, found)
+		})
+
+		t.Run("ja以外の翻訳を含むイベントをpushすると、200を返すがDBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: "push-non-ja-lang-00001",
+				Source:    "aws",
+				SourceURL: "https://example.com/push/non-ja-lang",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "en", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
+
+			w := pushEvent(t, engine, event)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, event.ArticleID)
+			assert.False(t, found)
+		})
+
+		t.Run("壊れたJSONをイベント本文としてpushすると、200を返すがDBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			brokenData := base64.StdEncoding.EncodeToString([]byte("not a valid json payload"))
+
+			w := doPush(t, engine, pushEnvelopeBody(brokenData))
+
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, 0, countAllArticles(t))
+		})
+
+		t.Run("message.dataがbase64として不正なpushをすると、400とundecodable dataを含む応答を返し、DBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+
+			w := doPush(t, engine, pushEnvelopeBody("not-valid-base64!!"))
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "undecodable data")
+			assert.Equal(t, 0, countAllArticles(t))
+		})
+
+		t.Run("push envelopeの形式でない本文を投げると、400とmalformed envelopeを含む応答を返し、DBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+
+			w := doPush(t, engine, "not valid json at all")
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+			assert.Equal(t, 0, countAllArticles(t))
+		})
+
+		t.Run("messageフィールドが無い本文を投げると、400とmalformed envelopeを含む応答を返し、DBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+
+			w := doPush(t, engine, `{}`)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+			assert.Equal(t, 0, countAllArticles(t))
+		})
+
+		t.Run("message.dataが空文字の本文を投げると、400とmalformed envelopeを含む応答を返し、DBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+
+			w := doPush(t, engine, pushEnvelopeBody(""))
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), "malformed envelope")
+			assert.Equal(t, 0, countAllArticles(t))
+		})
+
+		t.Run("article_idがちょうど26文字のとき、200を返し記事が永続化される", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			articleID := strings.Repeat("a", 26)
+			event := apinews.ArticleCollectedEvent{
 				ArticleID: articleID,
 				Source:    "aws",
-				SourceURL: "https://aws.amazon.com/" + articleID,
+				SourceURL: "https://example.com/push/article-id-26",
+				Tags:      []string{},
 				Translations: []apinews.EventTranslation{
-					{Lang: domain.LangEn, Title: "T", Summary: "S", Body: "B"},
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
 				},
-			})
-			require.NoError(t, err)
+			}
 
-			w := doPush(t, r, data)
-			assert.Equal(t, http.StatusOK, w.Code)
+			w := pushEvent(t, engine, event)
 
-			exists, err := articleExists(context.Background(), articleID)
-			require.NoError(t, err)
-			assert.False(t, exists, "invalid payload は DB に永続化されないべき")
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, articleID)
+			assert.True(t, found)
 		})
 
-		t.Run("壊れたJSONイベントをpushすると、200を返しDBに永続化されない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
+		t.Run("article_idが全角文字26文字のとき、200を返し記事が永続化される", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			articleID := strings.Repeat("あ", 26)
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: articleID,
+				Source:    "aws",
+				SourceURL: "https://example.com/push/article-id-fullwidth",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
 
-			w := doPush(t, r, []byte("{not-json"))
-			assert.Equal(t, http.StatusOK, w.Code)
+			w := pushEvent(t, engine, event)
 
-			articleIDs, err := fetchArticleIDs(context.Background())
-			require.NoError(t, err)
-			assert.Empty(t, articleIDs, "壊れた JSON は DB に永続化されないべき")
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, articleID)
+			assert.True(t, found)
 		})
 
-		t.Run("message.dataがbase64として不正なpushを投げると、400を返し応答に復号不能の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
+		t.Run("sourceがちょうど20文字のとき、200を返し記事が永続化される", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: "push-source-20-chars-01",
+				Source:    strings.Repeat("s", 20),
+				SourceURL: "https://example.com/push/source-20",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
 
-			w := httptest.NewRecorder()
-			body := `{"message":{"data":"not-valid-base64!!"}}`
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(body)))
+			w := pushEvent(t, engine, event)
 
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "undecodable data")
-			articleIDs, err := fetchArticleIDs(context.Background())
-			require.NoError(t, err)
-			assert.Empty(t, articleIDs, "base64 復号不能な push は DB に永続化されないべき")
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, event.ArticleID)
+			assert.True(t, found)
 		})
 
-		t.Run("push envelopeの形式でない本文を投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
+		t.Run("article_idが27文字(上限超過)のとき、200を返すがDBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			articleID := strings.Repeat("a", 27)
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: articleID,
+				Source:    "aws",
+				SourceURL: "https://example.com/push/article-id-27",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
 
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{not-json`)))
+			w := pushEvent(t, engine, event)
 
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "malformed envelope")
-			articleIDs, err := fetchArticleIDs(context.Background())
-			require.NoError(t, err)
-			assert.Empty(t, articleIDs, "envelope 不正な push は DB に永続化されないべき")
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, articleID)
+			assert.False(t, found)
 		})
 
-		t.Run("messageフィールドが無いpushを投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
+		t.Run("sourceが21文字(上限超過)のとき、200を返すがDBに永続化されない", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: "push-source-21-chars-01",
+				Source:    strings.Repeat("s", 21),
+				SourceURL: "https://example.com/push/source-21",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
 
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{}`)))
+			w := pushEvent(t, engine, event)
 
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "malformed envelope")
-			articleIDs, err := fetchArticleIDs(context.Background())
-			require.NoError(t, err)
-			assert.Empty(t, articleIDs, "message フィールドが無い push は DB に永続化されないべき")
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, event.ArticleID)
+			assert.False(t, found)
 		})
 
-		t.Run("message.dataが空文字のpushを投げると、400を返し応答にenvelope不正の内容が含まれDBに永続化されない", func(t *testing.T) {
-			r, _ := newTestRouter(t)
+		t.Run("article_idの上限超過で記事が捨てられた後、26文字に直して同じ記事をpushすると、200を返し記事が永続化される", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
+			sourceURL := "https://example.com/push/article-id-retry"
+			oversizedID := strings.Repeat("b", 27)
+			fixedID := strings.Repeat("b", 26)
 
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{"message":{"data":""}}`)))
+			oversized := apinews.ArticleCollectedEvent{
+				ArticleID: oversizedID,
+				Source:    "aws",
+				SourceURL: sourceURL,
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
+			require.Equal(t, http.StatusOK, pushEvent(t, engine, oversized).Code)
+			_, foundOversized := queryArticle(t, oversizedID)
+			require.False(t, foundOversized)
 
-			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.Contains(t, w.Body.String(), "malformed envelope")
-			articleIDs, err := fetchArticleIDs(context.Background())
-			require.NoError(t, err)
-			assert.Empty(t, articleIDs, "message.data が空文字の push は DB に永続化されないべき")
+			fixed := oversized
+			fixed.ArticleID = fixedID
+			w := pushEvent(t, engine, fixed)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, fixedID)
+			assert.True(t, found)
 		})
 
-		storedCases := []struct {
-			name      string
-			articleID string
-			source    string
-		}{
-			{
-				name:      "article_idが26文字のとき、200を返し記事が永続化される",
-				articleID: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-				source:    "aws",
-			},
-			{
-				name:      "sourceが20文字のとき、200を返し記事が永続化される",
-				articleID: "01ARZ3NDEKTSV4RRFFQ69G5FA5",
-				source:    "12345678901234567890",
-			},
-			{
-				name:      "article_idが全角26文字のとき、200を返し記事が永続化される",
-				articleID: strings.Repeat("あ", 26),
-				source:    "aws",
-			},
-		}
-		for _, tc := range storedCases {
-			t.Run(tc.name, func(t *testing.T) {
-				r, _ := newTestRouter(t)
+		t.Run("envelope不正で400になった後、同じ記事の有効なpushをすると、200を返し記事が永続化される", func(t *testing.T) {
+			pg.Truncate(t)
+			engine := newPushRouterEngine(postgres.NewNewsRepository(pg.Pool))
 
-				w := doPush(t, r, eventPayload(t, tc.articleID, tc.source))
-				assert.Equal(t, http.StatusOK, w.Code)
+			badW := doPush(t, engine, "not valid json at all")
+			require.Equal(t, http.StatusBadRequest, badW.Code)
 
-				aw, err := loadArticleWithTranslations(tc.articleID)
-				require.NoError(t, err)
-				assert.Equal(t, tc.articleID, aw.Article.ArticleID)
-				assert.Equal(t, tc.source, aw.Article.Source)
-				require.Len(t, aw.Translations, 1)
-			})
-		}
+			event := apinews.ArticleCollectedEvent{
+				ArticleID: "push-after-bad-envelope",
+				Source:    "aws",
+				SourceURL: "https://example.com/push/after-bad-envelope",
+				Tags:      []string{},
+				Translations: []apinews.EventTranslation{
+					{Lang: "ja", Title: "title", Summary: "summary", Body: "body"},
+				},
+			}
+			w := pushEvent(t, engine, event)
 
-		discardedCases := []struct {
-			name      string
-			articleID string
-			source    string
-		}{
-			{
-				name:      "article_idが27文字のとき、200を返しDBに永続化されない",
-				articleID: "ABCDEFGHIJKLMNOPQRSTUVWXYZ7",
-				source:    "aws",
-			},
-			{
-				name:      "sourceが21文字のとき、200を返しDBに永続化されない",
-				articleID: "01ARZ3NDEKTSV4RRFFQ69G5FA6",
-				source:    "123456789012345678901",
-			},
-		}
-		for _, tc := range discardedCases {
-			t.Run(tc.name, func(t *testing.T) {
-				r, _ := newTestRouter(t)
-
-				w := doPush(t, r, eventPayload(t, tc.articleID, tc.source))
-				assert.Equal(t, http.StatusOK, w.Code)
-
-				articleIDs, err := fetchArticleIDs(context.Background())
-				require.NoError(t, err)
-				assert.Empty(t, articleIDs)
-			})
-		}
-
-		t.Run("article_idが27文字のpushで記事が捨てられた後、26文字に直してpushすると200を返し記事が永続化される", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-
-			wTooLong := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7"))
-			require.Equal(t, http.StatusOK, wTooLong.Code)
-
-			wRetry := doPush(t, r, validEventPayload(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-			assert.Equal(t, http.StatusOK, wRetry.Code)
-
-			aw, err := loadArticleWithTranslations("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-			require.NoError(t, err)
-			assert.Equal(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", aw.Article.ArticleID)
-			require.Len(t, aw.Translations, 1)
-		})
-
-		t.Run("envelope不正なpushで400になった後、同じ記事の有効なpushを投げ直すと200を返し記事が永続化される", func(t *testing.T) {
-			r, _ := newTestRouter(t)
-			articleID := "01ARZ3NDEKTSV4RRFFQ69G5FA4"
-
-			wBad := httptest.NewRecorder()
-			r.ServeHTTP(wBad, httptest.NewRequest(http.MethodPost, pushPath, strings.NewReader(`{not-json`)))
-			require.Equal(t, http.StatusBadRequest, wBad.Code)
-
-			wRetry := doPush(t, r, validEventPayload(t, articleID))
-			assert.Equal(t, http.StatusOK, wRetry.Code)
-
-			aw, err := loadArticleWithTranslations(articleID)
-			require.NoError(t, err)
-			assert.Equal(t, articleID, aw.Article.ArticleID)
-			require.Len(t, aw.Translations, 1)
+			require.Equal(t, http.StatusOK, w.Code)
+			_, found := queryArticle(t, event.ArticleID)
+			assert.True(t, found)
 		})
 	})
 }

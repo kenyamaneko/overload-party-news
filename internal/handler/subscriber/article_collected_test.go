@@ -1,11 +1,11 @@
 package subscriber_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,158 +18,176 @@ import (
 	apinews "github.com/kenyamaneko/overload-party-news/packages/api-news"
 )
 
-func validEventJSON(t *testing.T) []byte {
-	t.Helper()
-	return eventJSON(t, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "aws")
-}
-
-func eventJSON(t *testing.T, articleID, source string) []byte {
-	t.Helper()
-	data, err := json.Marshal(apinews.ArticleCollectedEvent{
-		ArticleID: articleID,
-		Source:    source,
-		SourceURL: "https://aws.amazon.com/foo",
-		Tags:      []string{"compute"},
+func validCollectedEventForSubscriber() apinews.ArticleCollectedEvent {
+	return apinews.ArticleCollectedEvent{
+		ArticleID: "article-id-valid-002",
+		Source:    "aws",
+		SourceURL: "https://example.com/articles/2",
+		Tags:      []string{"cloud", "release"},
 		Translations: []apinews.EventTranslation{
-			{Lang: domain.LangJa, Title: "T", Summary: "S", Body: "B"},
+			{Lang: "ja", Title: "タイトル", Summary: "要約", Body: "本文"},
 		},
-	})
-	require.NoError(t, err)
-	return data
+	}
 }
 
-func TestHandle(t *testing.T) {
-	t.Run("記事収集イベントの処理", func(t *testing.T) {
-		ackCases := []struct {
-			name          string
-			payload       []byte
-			writeResult   bool
-			wantWriteCall int
-		}{
-			{
-				name:          "有効payloadで新規のとき、記事と翻訳が1回INSERTされACKされる",
-				payload:       validEventJSON(t),
-				writeResult:   true,
-				wantWriteCall: 1,
-			},
-			{
-				name:          "有効payloadで既に取り込み済みのとき、ACKされる",
-				payload:       validEventJSON(t),
-				writeResult:   false,
-				wantWriteCall: 1,
-			},
-			{
-				name:          "JSON不正のとき、repoを呼ばずACKされる",
-				payload:       []byte("{not-json"),
-				wantWriteCall: 0,
-			},
-			{
-				name:          "JSONが空のとき、repoを呼ばずACKされる",
-				payload:       []byte(""),
-				wantWriteCall: 0,
-			},
-			// 必須フィールド欠けは usecase のバリデーションで ACK される。
-			{
-				name: "translations空のとき、repoを呼ばずACKされる",
-				payload: func() []byte {
-					b, _ := json.Marshal(apinews.ArticleCollectedEvent{
-						ArticleID: "01", Source: "aws", SourceURL: "u",
-					})
-					return b
-				}(),
-				wantWriteCall: 0,
-			},
-			{
-				name:          "article_idが27文字のとき、repoを呼ばずACKされる",
-				payload:       eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
-				wantWriteCall: 0,
-			},
-			{
-				name:          "sourceが21文字のとき、repoを呼ばずACKされる",
-				payload:       eventJSON(t, "01", "123456789012345678901"),
-				wantWriteCall: 0,
-			},
-			{
-				name: "langがja以外のとき、repoを呼ばずACKされる",
-				payload: func() []byte {
-					b, _ := json.Marshal(apinews.ArticleCollectedEvent{
-						ArticleID: "01", Source: "aws", SourceURL: "u",
-						Translations: []apinews.EventTranslation{{Lang: domain.LangEn, Title: "t", Summary: "s", Body: "b"}},
-					})
-					return b
-				}(),
-				wantWriteCall: 0,
-			},
+type recordedInsert struct {
+	article                    domain.Article
+	lang, title, summary, body string
+}
+
+func newHandlerWithRecordingWriter(inserted bool, err error) (*subscriber.ArticleCollectedHandler, *[]recordedInsert) {
+	var calls []recordedInsert
+	writer := &port.MockNewsRepo{
+		InsertArticleWithTranslationFn: func(_ context.Context, article domain.Article, lang, title, summary, body string) (bool, error) {
+			calls = append(calls, recordedInsert{article: article, lang: lang, title: title, summary: summary, body: body})
+			return inserted, err
+		},
+	}
+	uc := ingest.New(writer)
+	return subscriber.NewArticleCollectedHandler(uc), &calls
+}
+
+type capturingSlogHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *capturingSlogHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingSlogHandler) Handle(_ context.Context, record slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, record)
+	return nil
+}
+
+func (h *capturingSlogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *capturingSlogHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func captureLogs(t *testing.T, do func()) *capturingSlogHandler {
+	t.Helper()
+	prev := slog.Default()
+	handler := &capturingSlogHandler{}
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() {
+		slog.SetDefault(prev)
+	})
+
+	do()
+
+	return handler
+}
+
+func recordAttr(t *testing.T, record slog.Record, key string) (string, bool) {
+	t.Helper()
+	var value string
+	found := false
+	record.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			value = a.Value.String()
+			found = true
+			return false
 		}
-		for _, tc := range ackCases {
-			t.Run(tc.name, func(t *testing.T) {
-				var writeCalls int
-				repo := &port.MockNewsRepo{
-					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
-						writeCalls++
-						return tc.writeResult, nil
-					},
-				}
-				h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
+		return true
+	})
+	return value, found
+}
 
-				err := h.Handle(context.Background(), tc.payload)
+func TestArticleCollectedHandlerHandle(t *testing.T) {
+	t.Run("[記事収集購読ハンドラ]Pub/Sub購読ハンドラのack/nack判定", func(t *testing.T) {
+		t.Run("取込可能な新規イベントを受け取ると、記事と翻訳が1回だけ書き込み先に渡り、エラーを返さない", func(t *testing.T) {
+			event := validCollectedEventForSubscriber()
+			data, err := json.Marshal(event)
+			require.NoError(t, err)
+			h, calls := newHandlerWithRecordingWriter(true, nil)
 
-				assert.NoError(t, err)
-				assert.Equal(t, tc.wantWriteCall, writeCalls)
-			})
-		}
+			handleErr := h.Handle(context.Background(), data)
 
-		t.Run("INSERTでDB障害のとき、NACKされる (エラー伝播)", func(t *testing.T) {
-			dbErr := errors.New("db connection lost")
-			var writeCalls int
-			repo := &port.MockNewsRepo{
-				InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
-					writeCalls++
-					return false, dbErr
-				},
-			}
-			h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
-
-			err := h.Handle(context.Background(), validEventJSON(t))
-
-			assert.ErrorIs(t, err, dbErr)
-			assert.Equal(t, 1, writeCalls)
+			assert.NoError(t, handleErr)
+			require.Len(t, *calls, 1)
+			got := (*calls)[0]
+			assert.Equal(t, event.ArticleID, got.article.ArticleID)
+			assert.Equal(t, event.Translations[0].Lang, got.lang)
+			assert.Equal(t, event.Translations[0].Title, got.title)
+			assert.Equal(t, event.Translations[0].Summary, got.summary)
+			assert.Equal(t, event.Translations[0].Body, got.body)
 		})
 
-		logCases := []struct {
-			name       string
-			payload    []byte
-			wantReason string
+		t.Run("取込可能だが既に取り込み済みのイベントを受け取ると、エラーを返さない", func(t *testing.T) {
+			event := validCollectedEventForSubscriber()
+			data, err := json.Marshal(event)
+			require.NoError(t, err)
+			h, _ := newHandlerWithRecordingWriter(false, nil)
+
+			handleErr := h.Handle(context.Background(), data)
+
+			assert.NoError(t, handleErr)
+		})
+
+		rejectedTests := []struct {
+			name      string
+			buildData func(t *testing.T) []byte
 		}{
 			{
-				name:       "article_idが27文字のとき、article_idが上限を超えた旨がログに出る",
-				payload:    eventJSON(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZ7", "aws"),
-				wantReason: "article_id exceeds 26 characters (got 27)",
+				name:      "本文がJSONとして解析できないデータを受け取ると",
+				buildData: func(*testing.T) []byte { return []byte("not valid json") },
 			},
 			{
-				name:       "sourceが21文字のとき、sourceが上限を超えた旨がログに出る",
-				payload:    eventJSON(t, "01", "123456789012345678901"),
-				wantReason: "source exceeds 20 characters (got 21)",
+				name:      "空のデータを受け取ると",
+				buildData: func(*testing.T) []byte { return []byte("") },
+			},
+			{
+				name: "article_idが空のイベントを受け取ると",
+				buildData: func(t *testing.T) []byte {
+					event := validCollectedEventForSubscriber()
+					event.ArticleID = ""
+					data, err := json.Marshal(event)
+					require.NoError(t, err)
+					return data
+				},
 			},
 		}
-		for _, tc := range logCases {
-			t.Run(tc.name, func(t *testing.T) {
-				var logged bytes.Buffer
-				prev := slog.Default()
-				slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
-				t.Cleanup(func() { slog.SetDefault(prev) })
-				repo := &port.MockNewsRepo{
-					InsertArticleWithTranslationFn: func(_ context.Context, _ domain.Article, _, _, _, _ string) (bool, error) {
-						return true, nil
-					},
-				}
-				h := subscriber.NewArticleCollectedHandler(ingest.New(repo))
+		for _, tt := range rejectedTests {
+			t.Run(tt.name+"、書き込み先には何も渡らず、エラーを返さない", func(t *testing.T) {
+				h, calls := newHandlerWithRecordingWriter(true, nil)
 
-				err := h.Handle(context.Background(), tc.payload)
+				handleErr := h.Handle(context.Background(), tt.buildData(t))
 
-				assert.NoError(t, err)
-				assert.Contains(t, logged.String(), tc.wantReason)
+				assert.NoError(t, handleErr)
+				assert.Empty(t, *calls)
 			})
 		}
+
+		t.Run("翻訳の要約が空のペイロードを拒否したとき、ログの記録内容にそのイベントのarticle_idが含まれる", func(t *testing.T) {
+			event := validCollectedEventForSubscriber()
+			event.Translations = []apinews.EventTranslation{
+				{Lang: "ja", Title: "タイトル", Summary: "", Body: "本文"},
+			}
+			data, err := json.Marshal(event)
+			require.NoError(t, err)
+			h, _ := newHandlerWithRecordingWriter(true, nil)
+
+			handler := captureLogs(t, func() {
+				handleErr := h.Handle(context.Background(), data)
+				require.NoError(t, handleErr)
+			})
+
+			require.Len(t, handler.records, 1)
+			articleID, ok := recordAttr(t, handler.records[0], "article_id")
+			require.True(t, ok)
+			assert.Equal(t, event.ArticleID, articleID)
+		})
+
+		t.Run("有効なイベントを受け取り、書き込み先がエラーを返すとき、そのエラーがそのまま呼び出し元に返る", func(t *testing.T) {
+			event := validCollectedEventForSubscriber()
+			data, err := json.Marshal(event)
+			require.NoError(t, err)
+			writerErr := errors.New("insert failed")
+			h, _ := newHandlerWithRecordingWriter(false, writerErr)
+
+			handleErr := h.Handle(context.Background(), data)
+
+			assert.ErrorIs(t, handleErr, writerErr)
+		})
 	})
 }
